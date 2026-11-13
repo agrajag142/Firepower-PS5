@@ -1,0 +1,16 @@
+# Shelling a building until it goes: below the garages, facing north
+tap FIRE
+hold NONE 2
+place 1376 830 0
+shot below
+hold FIRE 30
+shot hit1
+hold FIRE 60
+hold NONE 4
+shot boom
+hold NONE 40
+shot rubble
+place 1376 830 4
+hold FIRE 200
+hold NONE 30
+shot east

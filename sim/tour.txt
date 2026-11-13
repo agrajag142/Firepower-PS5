@@ -1,0 +1,21 @@
+# The first look: the title, a battlefield, driving, shooting, the map
+shot title
+tap FIRE
+hold NONE 2
+shot start
+hold DOWN 40
+hold UP 120
+shot drive
+hold RIGHT 24
+hold UP 100
+shot turn
+stick -1 0 120
+shot stick
+stick 0 -1 30
+hold FIRE 110
+hold NONE 40
+shot fire
+tap MAP
+shot map
+tap MAP
+wav 3 shooting

@@ -1,0 +1,7 @@
+build/
+*.o
+*.ppm
+*.wav
+# the original game's files: from your own disk (tools/extract_assets.py), never in git
+assets/fp/
+*.adf
