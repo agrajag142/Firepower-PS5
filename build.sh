@@ -50,19 +50,34 @@ kit=$home/kit-work
 sdk=${PS5_PAYLOAD_SDK:-$home/ps5-payload-sdk}
 
 # 1. The kit, copied to the work folder whenever kit/ changed (as the starter's own apps do).
-stamp=$(cd "$repo/kit" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)
+#    Its .deps (the SDK and the tools: big, and linked rather than copied) are left
+#    where they are.
+stamp=$(cd "$repo/kit" && find . -path ./.deps -prune -o -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)
 if [[ ! -f $kit/.kit-stamp || $(cat "$kit/.kit-stamp") != "$stamp" ]]; then
     echo "Preparing the kit..."
     mkdir -p "$kit"
     find "$kit" -mindepth 1 -maxdepth 1 ! -name .deps -exec rm -rf {} +
-    cp -r "$repo/kit/." "$kit/"
+    (cd "$repo/kit" && tar cf - --exclude=./.deps .) | (cd "$kit" && tar xf -)
     echo "$stamp" > "$kit/.kit-stamp"
 fi
+# the SDK: the work folder's link to it (the kit's own copy, or the setup's)
+[[ -d $repo/kit/.deps/native/ps5-payload-sdk && ! -d $sdk ]] && sdk=$repo/kit/.deps/native/ps5-payload-sdk
 kit_sdk=$kit/.deps/native/ps5-payload-sdk
 [[ ! -L $kit_sdk || -e $kit_sdk ]] || rm -f "$kit_sdk"
 if [[ ! -e $kit_sdk && -x $sdk/bin/prospero-lld ]]; then
     mkdir -p "$kit/.deps/native"
     ln -s "$sdk" "$kit_sdk"
+fi
+# the kit's other dependencies (its tools), linked in the same way if missing
+if [[ -d $repo/kit/.deps ]]; then
+    for d in "$repo"/kit/.deps/* "$repo"/kit/.deps/native/*; do
+        [[ -e $d ]] || continue
+        rel=${d#"$repo"/kit/}
+        [[ -e $kit/$rel || -L $kit/$rel ]] && continue
+        [[ $rel == .deps/native ]] && { mkdir -p "$kit/$rel"; continue; }
+        mkdir -p "$(dirname -- "$kit/$rel")"
+        ln -s "$d" "$kit/$rel"
+    done
 fi
 
 # 2. The game's files beside the kit's own (in kit-work/firepower). Only src/ is
