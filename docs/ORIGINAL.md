@@ -70,7 +70,7 @@ map at `B_15d0`). Each byte is a tile type (0-92).
 | 4 | the type it becomes when destroyed |
 | 5 | 1: destructible |
 | 6 | flags: bit 3 your base (type 20), bit 2 the enemy's (type 32) |
-| 7 | flags: bits 0, 1 helipad halves (sets $88 in a helicopter) |
+| 7 | flags: bit 6 a gate of one side (type 44), bit 7 the other's (type 67): `sub_03680` swaps in the linked type (byte 9, the open gate) when that side's tank is on the gate square or the square before it in its row; bits 0, 1 (sets $88 in an object: not yet known) |
 | 9 | the other square of a two-square thing |
 | 10 | movement: `& $78` copied into the second map `B_25d0` (bit 7 there: something standing on the square) |
 | 13 | strength |

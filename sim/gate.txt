@@ -1,0 +1,15 @@
+# Out of the garage and through the compound's gate (battlefield 1)
+tap FIRE
+hold NONE 2
+shot garage
+hold UP 40
+shot leaving
+hold UP 75
+hold NONE 20
+shot south
+stick 1 0 40
+shot atgate
+stick 1 0 120
+shot through
+hold NONE 90
+shot closed

@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 002: the tank starts under its garage's roof (drawn over it); your
+// gates (type 44: bit 6 of the tile's second flags) open as you drive up to
+// them and close behind you, as the original's sub_03680 does.
+//
 // Version 001: the title screen, a battlefield (any of the 11 on the disk),
 // your tank (16 headings, as the original), the walls and buildings in its
 // way, shells that wear down and destroy what they hit (each square's
@@ -22,7 +26,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V001";
+static const char *VERSION = "V002";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -38,6 +42,7 @@ static const float SHELL_SPEED = 260.0f;
 static const float SHELL_RANGE = 300.0f;
 static const float RELOAD = 0.45f;
 static const int SHELL_DAMAGE = 5;         // a building (strength 15) takes three
+static const float GATE_CLOSE = 1.0f;      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the sound
 // A few voices mixing the original's 8-bit samples up to 48 kHz. The game
@@ -162,6 +167,49 @@ static void addBoom(float x, float y, bool big) {
     }
 }
 
+// ============================================================ gates
+// The original opens a gate (a square with bit 6 of its second flags, yours, or
+// bit 7, the enemy's) when that side's tank is on it or beside it in its row:
+// the square becomes its linked type (byte 9: the open gate).
+struct Gate {
+  int i;                 // its square
+  uint8_t shut, open;    // its two types
+  float clear;           // how long nothing has been near it
+};
+static Gate gates[64];
+static int nGates = 0;
+
+static void findGates() {
+  nGates = 0;
+  for (int i = 0; i < MAPN * MAPN && nGates < 64; i++) {
+    const TileType &t = A.types[field[i]];
+    if ((t.flagsB & 0x40) && t.link < 93) gates[nGates++] = { i, field[i], t.link, 0 };
+  }
+}
+
+static void updateGates(float dt) {
+  int tx = (int)floorf(tank.x / TILE), ty = (int)floorf(tank.y / TILE);
+  for (int k = 0; k < nGates; k++) {
+    Gate &g = gates[k];
+    int gx = g.i / MAPN, gy = g.i % MAPN;
+    // near: in its row (or column), on it or a square either side; or any part of the tank on it
+    bool near = (ty == gy && tx >= gx - 1 && tx <= gx + 1) || (tx == gx && ty >= gy - 1 && ty <= gy + 1);
+    float r = TANK_RADIUS + 2;
+    bool onIt = tank.x + r > gx * TILE && tank.x - r < gx * TILE + TILE && tank.y + r > gy * TILE &&
+                tank.y - r < gy * TILE + TILE;
+    if (field[g.i] == g.shut) {
+      if (near) {
+        field[g.i] = g.open;
+        g.clear = 0;
+        playSound(SND_DRIP, 0.4f);
+      }
+    } else if (field[g.i] == g.open) {
+      g.clear = (near || onIt) ? 0 : g.clear + dt;
+      if (g.clear >= GATE_CLOSE) field[g.i] = g.shut;
+    }
+  }
+}
+
 static void startBattle(int m) {
   mapNo = m;
   memcpy(field, A.maps[m], sizeof(field));
@@ -176,6 +224,8 @@ static void startBattle(int m) {
   tank = Tank();
   tank.x = (start / MAPN) * TILE + TILE / 2.0f;
   tank.y = (start % MAPN) * TILE + TILE / 2.0f;
+  tank.heading = PI;   // facing out of the garage (its door is to the south)
+  findGates();
   for (Shell &s : shells) s.live = false;
   for (Boom &b : booms) b.live = false;
   score = destroyed = 0;
@@ -413,6 +463,32 @@ static void drawTitle(float dt) {
   drawVectorText(VERSION, 1250, 708, 1.2f, rgb565(110, 110, 110), false);
 }
 
+// The roof of anything the tank can be under (your base and the enemy's: bits 3
+// and 2 of the first flags), drawn again over the tank where it isn't sand
+static void drawRoofs() {
+  int x0 = (int)floorf((tank.x - 16) / TILE), x1 = (int)floorf((tank.x + 16) / TILE);
+  int y0 = (int)floorf((tank.y - 16) / TILE), y1 = (int)floorf((tank.y + 16) / TILE);
+  for (int tx = x0; tx <= x1; tx++)
+    for (int ty = y0; ty <= y1; ty++) {
+      if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) continue;
+      const TileType &t = typeAt(tx, ty);
+      if (!(t.flagsA & 0x0c)) continue;
+      const Pic &pic = A.tiles[t.pic];
+      const uint8_t *solid = A.tileSolid[t.pic];
+      int sx = roundi((tx * TILE - camX) * S), sy = roundi((ty * TILE - camY) * S);
+      for (int y = 0; y < 128; y++) {
+        int yy = sy + y;
+        if (yy < 0 || yy >= FB_H) continue;
+        uint32_t *row = g_frame + (size_t)yy * FB_W;
+        for (int x = 0; x < 128; x++) {
+          int xx = sx + x;
+          if (xx < 0 || xx >= FB_W || !solid[(y >> 1) * TILE + (x >> 1)]) continue;
+          row[xx] = pic.px[y * 128 + x];
+        }
+      }
+    }
+}
+
 // ============================================================ the frame
 void gameInit(uint32_t seed, const char *dir) {
   (void)seed;
@@ -447,6 +523,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
       tank.reload = RELOAD;
     }
     moveShells(dt);
+    updateGates(dt);
   }
 
   // the view follows the tank
@@ -461,6 +538,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   for (Shell &s : shells)
     if (s.live) drawPic2x(A.shell.pic[s.frame], s.x, s.y);
   drawPic2x(A.tank.pic[frameOf(tank.heading)], tank.x, tank.y);
+  drawRoofs();
   drawBooms(mapOpen ? 0 : dt);
   drawHud();
   if (mapOpen) {
