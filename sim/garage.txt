@@ -1,15 +1,19 @@
-# The garage's three walls: from the start the tank can't get out reversing (north), left or
-# right - only forwards, out of the bottom
+# The garage's three walls: from the start (facing out, south) the tank can't get out
+# north, left or right - only south, out of the bottom
 tap FIRE
 hold NONE 2
-hold DOWN 90
+hold UP 90
 shot back
-place 1440 736 12
-hold UP 90
+place 1440 736 8
+hold LEFT 90
 shot left
-place 1440 736 4
-hold UP 90
+place 1440 736 8
+hold RIGHT 90
 shot right
 place 1440 736 8
-hold UP 90
+hold DOWN 90
 shot out
+# and the D-pad drives straight: facing right, held right, it stays on its line
+place 1600 875 4
+hold RIGHT 60
+shot straight

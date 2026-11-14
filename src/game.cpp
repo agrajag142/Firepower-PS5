@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 018: the tank moves exactly the way its picture faces (one of the
+// original's 16 headings), so it no longer slides off a straight line; the
+// D-pad steers as the stick does (8 ways).
+//
 // Version 017: the garage's three walls are solid: a tank only comes out (or
 // goes in) at the bottom, as on the Amiga.
 //
@@ -87,7 +91,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V017";
+static const char *VERSION = "V018";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -512,6 +516,11 @@ static void hitSquare(int tx, int ty, float hx, float hy) {
 // ============================================================ the tank
 static void moveTank(float dt, uint32_t held, float sx, float sy) {
   float want = 0;   // speed asked for
+  // the D-pad: as the stick, 8 ways
+  if (held & (BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN)) {
+    sx = (held & BTN_RIGHT ? 1.0f : 0.0f) - (held & BTN_LEFT ? 1.0f : 0.0f);
+    sy = (held & BTN_DOWN ? 1.0f : 0.0f) - (held & BTN_UP ? 1.0f : 0.0f);
+  }
   float mag = sqrtf(sx * sx + sy * sy);
   if (mag > 0.35f) {
     // the stick: point it where to go; the tank turns that way and drives once it faces it
@@ -520,12 +529,6 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
     float turn = TANK_TURN * dt;
     tank.heading += diff > turn ? turn : (diff < -turn ? -turn : diff);
     if (fabsf(diff) < 0.8f) want = TANK_SPEED * (mag > 1 ? 1 : mag) * cosf(diff);
-  } else {
-    // the D-pad: as the original's joystick - left and right turn, up and down drive
-    if (held & BTN_LEFT) tank.heading -= TANK_TURN * dt;
-    if (held & BTN_RIGHT) tank.heading += TANK_TURN * dt;
-    if (held & BTN_UP) want = TANK_SPEED;
-    else if (held & BTN_DOWN) want = -TANK_REVERSE;
   }
   tank.heading = wrapAngle(tank.heading);
   if (tank.heading < 0) tank.heading += TWO_PI;
@@ -534,7 +537,9 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
   tank.speed += want > tank.speed + dv ? dv : (want < tank.speed - dv ? -dv : want - tank.speed);
 
   // it moves along its heading; a wall stops it on that axis (so it slides along)
-  float dx = sinf(tank.heading) * tank.speed * dt, dy = -cosf(tank.heading) * tank.speed * dt;
+  // it moves the way its picture faces: the nearest of the original's 16 headings
+  float along = frameOf(tank.heading) * TWO_PI / 16;
+  float dx = sinf(along) * tank.speed * dt, dy = -cosf(along) * tank.speed * dt;
   auto clear = [](float x, float y) {   // eight points round its body
     const float r = TANK_RADIUS, d = TANK_RADIUS * 0.7071f;
     return !solidAt(x - r, y) && !solidAt(x + r, y) && !solidAt(x, y - r) && !solidAt(x, y + r) &&
@@ -1342,9 +1347,10 @@ void gameDebugMan(float x, float y, int side) {
     if (!m.live) {
       m.live = true;
       m.side = side;
+      m.inside = false;
       m.x = x;
       m.y = y;
-      manHeading(m, 0);
+      m.dx = m.dy = 0;   // standing (until he sees a tank, or 5 seconds)
       m.turn = 5;
       return;
     }

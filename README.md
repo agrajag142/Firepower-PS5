@@ -10,6 +10,13 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 018
+
+- The tank moves exactly the way its picture faces (one of the original's 16
+  headings): it no longer drifts off a straight line
+- The D-pad steers as the stick does: press the way to go (diagonals too) and
+  the tank turns that way and drives
+
 ## Version 017
 
 - The garage's left, top and right walls are solid: the tank only comes out
@@ -153,7 +160,7 @@ the pick screen and its tanks, then two players split-screen.
 | DualSense | |
 | --- | --- |
 | Left stick | point where to go: the tank turns that way and drives |
-| D-pad | as the original joystick: left/right turn, up forward, down reverse |
+| D-pad | the same, 8 ways: the tank turns the way pressed and drives |
 | Cross, R1 or R2 | fire |
 | Options or the touchpad | the full map (Circle there: back to the title screen) |
 | Triangle (title screen) | the next battlefield |

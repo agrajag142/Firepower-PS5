@@ -29,6 +29,6 @@ place 1560 875 4
 man 1600 875 1
 man 1625 878 1
 man 1650 872 0
-hold UP 60
+hold RIGHT 150
 hold NONE 10
 shot men5

@@ -2,9 +2,9 @@
 tap FIRE
 hold NONE 2
 shot garage
-hold UP 40
+hold DOWN 40
 shot leaving
-hold UP 75
+hold DOWN 75
 hold NONE 20
 shot south
 stick 1 0 40

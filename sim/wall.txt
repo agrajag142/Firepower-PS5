@@ -9,5 +9,5 @@ shot w1
 hold FIRE 110
 hold NONE 40
 shot w2
-hold UP 90
+hold DOWN 90
 shot w3

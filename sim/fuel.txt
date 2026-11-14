@@ -5,14 +5,14 @@ tap FIRE
 hold NONE 2
 place 3744 168 8
 fuel 0
-hold UP 60
+hold DOWN 60
 shot empty
 place 3744 168 0
 hold FIRE 100
 hold NONE 20
 shot depot
 place 3744 168 8
-hold UP 60
+hold DOWN 60
 hold NONE 5
 shot driven
 fuel 20
