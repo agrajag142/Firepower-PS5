@@ -10,6 +10,12 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 015
+
+- Turrets only fire from about 110 pixels away (as on the Amiga, where they
+  reach from just off the edge of its small battle view), and their missiles
+  don't fly as far
+
 ## Version 014: fuel
 
 - The tank uses fuel as it drives (a full tank: about two minutes of driving;

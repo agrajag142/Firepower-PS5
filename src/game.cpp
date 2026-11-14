@@ -6,6 +6,9 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 015: turrets reach about 110 pixels (checked against the Amiga
+// game: they fire only from just off the edge of its small battle view).
+//
 // Version 014: fuel. The tank uses it as it drives; your garage refuels it,
 // and destroying one of the enemy's fuel depots (type 34, its green barrels)
 // fills it up. Empty, it only crawls. A mine for every 5 men rescued (kept
@@ -78,7 +81,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V014";
+static const char *VERSION = "V015";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -96,14 +99,16 @@ static const float RELOAD = 0.45f;
 static const int SHELL_DAMAGE = 5;         // a building (strength 15) takes three
 static const float GATE_CLOSE = 1.0f;
 static const float TRUNK = 0.3f;
-// A turret acts only while it would be on the original's 352 x 232 screen round
-// your tank (the original works its turrets as it draws the squares in view)
-static const float TURRET_SEE_X = 176 + 32, TURRET_SEE_Y = 116 + 32;
+// A turret acts only while it would be in the original's battle view round your
+// tank (the original works its turrets as it draws the squares in view). That
+// view is smaller than the Amiga's screen (its panel takes the rest): on the
+// Amiga a turret fires from just off its edge, about 110 pixels away
+static const float TURRET_SEE_X = 110, TURRET_SEE_Y = 110;
 static const float TURRET_STEP = 0.14f;    // seconds per 45-degree turn (the original: a step per update)
 static const float TURRET_RELOAD = 0.8f;   // after its missile is gone (plus a little at random)
 static const int WALL_STRENGTH = 30;       // a plain wall: shells to wear it into a damaged wall (x SHELL_DAMAGE)
 static const float MISSILE_SPEED = 150.0f;
-static const float MISSILE_RANGE = 360.0f;
+static const float MISSILE_RANGE = 200.0f;
 static const int MISSILE_DAMAGE = 12;      // of your tank's 100 armour
 static const int TANKS = 3;                // tanks you have
 static const float RESPAWN = 2.5f;         // seconds before the next tank comes out
