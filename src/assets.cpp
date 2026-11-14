@@ -3,6 +3,7 @@
 #include "assets.h"
 #include "gfx.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -152,6 +153,30 @@ bool assetsLoad(const char *dir) {
       for (int c = 0; c < 32 && !isSand; c++)
         if (sand[c] && tiles.pic[t].px[i] == A.pal[c]) isSand = true;
       A.tileSolid[t][i] = isSand ? 0 : 1;
+      uint32_t c = tiles.pic[t].px[i];
+      int r = c & 255, g = c >> 8 & 255, b = c >> 16 & 255;
+      A.tileLeaves[t][i] = !isSand && g > r + 20 && g > b + 20;
+    }
+    // the trees: each joined shape (anything not sand) with leaves in it is a
+    // tree; its middle is the middle of its leaves (its trunk), its size theirs
+    A.nTrees[t] = 0;
+    static int16_t stack[64 * 64];
+    static uint8_t seen[64 * 64];
+    memset(seen, 0, sizeof(seen));
+    for (int i = 0; i < 64 * 64; i++) {
+      if (!A.tileLeaves[t][i] || seen[i]) continue;
+      int n = 0, top = 0;
+      float sx = 0, sy = 0;
+      stack[top++] = (int16_t)i;
+      seen[i] = 1;
+      while (top) {
+        int k = stack[--top], x = k % 64, y = k / 64;
+        if (A.tileLeaves[t][k]) { n++; sx += x; sy += y; }
+        const int nb[4] = { x > 0 ? k - 1 : -1, x < 63 ? k + 1 : -1, y > 0 ? k - 64 : -1, y < 63 ? k + 64 : -1 };
+        for (int j : nb)
+          if (j >= 0 && A.tileSolid[t][j] && !seen[j]) { seen[j] = 1; stack[top++] = (int16_t)j; }
+      }
+      if (n >= 30 && A.nTrees[t] < 4) A.trees[t][A.nTrees[t]++] = { sx / n + 0.5f, sy / n + 0.5f, sqrtf(n / 3.14159f) };
     }
     Pic &src = tiles.pic[t], &dst = A.tiles[t];
     dst.w = dst.h = 128;

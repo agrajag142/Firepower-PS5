@@ -53,6 +53,10 @@ struct Assets {
   Pic tiles[50];              // gr/tiles, at 2x (128 x 128), ready to copy
   uint32_t tileAvg[50];       // each tile's average colour (the map)
   uint8_t tileSolid[50][64 * 64];   // 1 where a tile's picture isn't sand (what blocks, in a solid square)
+  uint8_t tileLeaves[50][64 * 64];  // 1 where it's leaves (green): drawn over a tank under the tree
+  struct Tree { float x, y, r; };   // a tree in a tile: its middle and its size (Amiga pixels)
+  int nTrees[50];
+  Tree trees[50][4];
   PicSet tank, scorp, shadow, turret, heli, men, boom, shell, numbers;
   TileType types[93];
   uint8_t maps[11][4096];     // mapp1/t1..t5, mapp2/t1..t5, mapp3/t1 (x * 64 + y)

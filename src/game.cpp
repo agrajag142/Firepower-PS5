@@ -6,6 +6,9 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 003: trees - the tank drives under their branches (the leaves drawn
+// over it) but not through their trunks.
+//
 // Version 002: the tank starts under its garage's roof (drawn over it); your
 // gates (type 44: bit 6 of the tile's second flags) open as you drive up to
 // them and close behind you, as the original's sub_03680 does.
@@ -26,7 +29,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V002";
+static const char *VERSION = "V003";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -42,7 +45,8 @@ static const float SHELL_SPEED = 260.0f;
 static const float SHELL_RANGE = 300.0f;
 static const float RELOAD = 0.45f;
 static const int SHELL_DAMAGE = 5;         // a building (strength 15) takes three
-static const float GATE_CLOSE = 1.0f;      // seconds after you're clear of a gate, it shuts
+static const float GATE_CLOSE = 1.0f;
+static const float TRUNK = 0.3f;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the sound
 // A few voices mixing the original's 8-bit samples up to 48 kHz. The game
@@ -114,7 +118,18 @@ static bool solidSquare(int tx, int ty) {
 // drive up to a wall or a building, not stop a square short of it)
 static bool solidAt(float x, float y) {
   int tx = (int)floorf(x / TILE), ty = (int)floorf(y / TILE);
-  if (!solidSquare(tx, ty)) return false;
+  if (!solidSquare(tx, ty)) {
+    // a tree: only its trunk, in the middle of its leaves, stops a tank
+    if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return false;
+    int pic = typeAt(tx, ty).pic;
+    for (int k = 0; k < A.nTrees[pic]; k++) {
+      const Assets::Tree &tr = A.trees[pic][k];
+      float dx = x - (tx * TILE + tr.x), dy = y - (ty * TILE + tr.y), r = tr.r * TRUNK;
+      if (r < 3) r = 3;
+      if (dx * dx + dy * dy < r * r) return true;
+    }
+    return false;
+  }
   if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return true;
   int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
   return A.tileSolid[typeAt(tx, ty).pic][py * TILE + px] != 0;
@@ -463,8 +478,8 @@ static void drawTitle(float dt) {
   drawVectorText(VERSION, 1250, 708, 1.2f, rgb565(110, 110, 110), false);
 }
 
-// The roof of anything the tank can be under (your base and the enemy's: bits 3
-// and 2 of the first flags), drawn again over the tank where it isn't sand
+// What the tank can be under, drawn again over it: the roof of your base and
+// the enemy's (bits 3 and 2 of the first flags), and trees' leaves
 static void drawRoofs() {
   int x0 = (int)floorf((tank.x - 16) / TILE), x1 = (int)floorf((tank.x + 16) / TILE);
   int y0 = (int)floorf((tank.y - 16) / TILE), y1 = (int)floorf((tank.y + 16) / TILE);
@@ -472,9 +487,11 @@ static void drawRoofs() {
     for (int ty = y0; ty <= y1; ty++) {
       if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) continue;
       const TileType &t = typeAt(tx, ty);
-      if (!(t.flagsA & 0x0c)) continue;
+      const uint8_t *solid;
+      if (t.flagsA & 0x0c) solid = A.tileSolid[t.pic];          // a roof
+      else if (A.nTrees[t.pic]) solid = A.tileLeaves[t.pic];     // a tree's leaves
+      else continue;
       const Pic &pic = A.tiles[t.pic];
-      const uint8_t *solid = A.tileSolid[t.pic];
       int sx = roundi((tx * TILE - camX) * S), sy = roundi((ty * TILE - camY) * S);
       for (int y = 0; y < 128; y++) {
         int yy = sy + y;

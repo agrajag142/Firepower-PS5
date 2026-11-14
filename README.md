@@ -10,6 +10,11 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 003
+
+- Trees: the tank drives under their branches (the leaves are drawn over it)
+  and stops at the trunk in the middle of each tree
+
 ## Version 002
 
 - The tank starts inside its garage, under the roof, facing out
@@ -82,6 +87,7 @@ Quantum Lockdown (`PPSA99903`).
 firepower/build.sh sim                     # plays sim/tour.txt, screenshots in firepower/build/sim/shots
 firepower/build.sh sim firepower/sim/shoot.txt   # shelling a building to rubble
 firepower/build.sh sim firepower/sim/gate.txt    # out of the garage and through the gate
+firepower/build.sh sim firepower/sim/trees.txt   # under the trees, up to their trunks
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

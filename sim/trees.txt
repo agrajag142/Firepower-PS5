@@ -1,0 +1,13 @@
+# Driving into a tree (battlefield 1, below the compound): under its leaves, stopped by its trunk
+tap FIRE
+hold NONE 2
+place 1350 990 4
+shot tree0
+hold RIGHT 0
+hold UP 60
+shot tree1
+hold UP 120
+shot tree2
+place 1350 1010 4
+hold UP 180
+shot tree3
