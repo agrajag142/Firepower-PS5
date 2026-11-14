@@ -10,6 +10,10 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 013
+
+- An extra tank for every 15 men rescued (as the original), with EXTRA TANK! on the screen
+
 ## Version 012
 
 - The men walk slower
@@ -174,6 +178,7 @@ firepower/build.sh sim firepower/sim/heli.txt    # a helicopter attacks; the tan
 firepower/build.sh sim firepower/sim/wall.txt    # shooting a wall open
 firepower/build.sh sim firepower/sim/flag.txt    # the bunkers, the HQ, the flag, home: won
 firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard, rescued; run over
+firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

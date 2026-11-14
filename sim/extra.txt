@@ -1,0 +1,24 @@
+# 15 men rescued: an extra tank (men put by the first-aid station, the tank stopped to its right)
+god on
+tap FIRE
+hold NONE 2
+place 1376 800 12
+man 1360 780 0
+man 1365 780 0
+man 1370 780 0
+man 1375 780 0
+man 1380 780 0
+man 1385 780 0
+hold NONE 600
+man 1360 780 0
+man 1365 780 0
+man 1370 780 0
+man 1375 780 0
+man 1380 780 0
+man 1385 780 0
+hold NONE 600
+man 1360 780 0
+man 1365 780 0
+man 1370 780 0
+hold NONE 400
+shot extra

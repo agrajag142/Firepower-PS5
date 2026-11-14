@@ -6,6 +6,8 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 013: an extra tank for every 15 men rescued (as the original).
+//
 // Version 012: the men walk slower, and get out at your first-aid station
 // (type 24, the red cross): stop on the square to its right and they climb
 // out and run in, as the original's instructions say.
@@ -71,7 +73,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V012";
+static const char *VERSION = "V013";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -102,7 +104,8 @@ static const int TANKS = 3;                // tanks you have
 static const float RESPAWN = 2.5f;         // seconds before the next tank comes out
 static const int DECOY_STRENGTH = 40;      // a decoy bunker's inside (the real one's: the original's 75)
 static const float MAN_SPEED = 9.0f;       // Amiga pixels a second (running: x1.5)
-static const float UNLOAD_EVERY = 0.45f;   // seconds between men getting out at the first-aid station
+static const float UNLOAD_EVERY = 0.45f;
+static const int MEN_PER_TANK = 15;        // rescued men for an extra tank   // seconds between men getting out at the first-aid station
 static const int TANK_ROOM = 6;            // men your tank can carry
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
@@ -265,7 +268,7 @@ struct Splat { float x, y; };
 static Man men[200];
 static Splat splats[96];
 static int nSplats = 0, aboard = 0, rescued = 0, menLost = 0, menKilled = 0;
-static float unloadT = 0;
+static float unloadT = 0, extraT = 0;   // (extraT: the EXTRA TANK message, while > 0)
 static float aidX = 20, aidY = 32;   // the red cross in the first-aid station's square (from its picture)
 static Heli helis[HELI_MAX];
 static float heliTimer = 0;
@@ -405,6 +408,7 @@ static void startBattle(int m) {
   heliTimer = HELI_FIRST;
   for (Man &mn : men) mn.live = false;
   unloadT = 0;
+  extraT = 0;
   {   // where the red cross is in the first-aid station's picture
     const Pic &p = A.tiles[A.types[24].pic];
     float sxs = 0, sys = 0;
@@ -804,6 +808,11 @@ static void updateMen(float dt) {
         rescued++;
         score += 200;
         playSound(SND_DRIP, 0.5f);
+        if (rescued % MEN_PER_TANK == 0) {   // an extra tank
+          tanksLeft++;
+          extraT = 3;
+          playSound(SND_BOOM2, 0.4f);
+        }
       } else {
         m.x += m.dx * step;
         m.y += m.dy * step;
@@ -1057,6 +1066,10 @@ static void drawHud() {
   if (fillW > 0) pxRect(bx0, by0, bx0 + fillW - 1, by0 + bh - 1, col);
   for (int k = 0; k < tanksLeft - (tank.alive ? 1 : 0) && k < 9; k++)
     drawPic2x(A.tank.pic[0], camX + (440 + k * 56) / (float)S, camY + (FB_H - 95) / (float)S);
+  if (extraT > 0) {
+    extraT -= 1 / 60.0f;
+    if (fmodf(extraT, 0.5f) < 0.35f) drawVectorText("EXTRA TANK!", 640, 160, 3.0f, rgb565(255, 230, 90), true);
+  }
   if (aboard) {
     snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d - STOP RIGHT OF THE FIRST-AID STATION", aboard, TANK_ROOM);
     pxBlend(16, FB_H - 170, 900, FB_H - 128, 0, 0, 0, 0.45f);
