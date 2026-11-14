@@ -8,6 +8,7 @@
 //                place X Y H           put the tank at X,Y (Amiga pixels) facing H (0..15)
 //                shot NAME             (out/NAME.ppm, made a PNG by build.sh)
 //                wav SECONDS NAME      the sound for the next SECONDS: out/NAME.wav
+//                god on|off            the tank can't be hurt (to test what's past the turrets)
 //                seed N                (before anything else)
 //                # comment
 #include "game.h"
@@ -110,6 +111,8 @@ int main(int argc, char **argv) {
         if (wf) fwrite(buf, 4, per, wf);
       }
       if (wf) fclose(wf);
+    } else if (!strcmp(cmd, "god")) {      // god on|off: the tank can't be hurt
+      gameDebugGod(!strcmp(a, "on"));
     } else if (!strcmp(cmd, "shot")) {
       shot(argv[2], a);
     }

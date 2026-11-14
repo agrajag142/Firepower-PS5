@@ -88,3 +88,19 @@ Boom2 700, Heli 500, Splat 300, Drip 1000 (3546895 / period samples a second).
 "YOU HAVE WON!!! and such a glorious battle it was too...", "YOUR DEAD!!!",
 "FINAL REPORT", "CASUALTIES: Tanks / Heli / Men", "RESCUED", "INFLICTED",
 "[F1] Restart Game [F2] Repick Tanks [F3] Repick Type of Game".
+
+## The battle
+
+`sub_07f50(&x, &y, find, chosen, rest)` turns every square of type `find`
+into `rest`, except one picked at random, which becomes `chosen`. The
+two-player setup (`$088ec`..) picks your base among the type 20 squares and
+the enemy's among type 32, a tank in each (`B_38c0` yours, `B_38bc` theirs),
+then the headquarters: one type 92 becomes 69 (the enemy's) and one 89 becomes
+46 (yours). The one-player setup (`$098a0`) makes only your tank
+(`B_38bc = B_38c0`: no enemy tank) and the enemy's headquarters.
+
+Headquarters: 69 (one hit) becomes 81 (strength 75, bit 5 of the second
+flags); destroyed, the flag object `B_5352` (gr/numbers record 11, loaded to
+`B_5750`) is put on its square (`sub_0fd94`). Carrying the flag (bit 1 of the
+tank's byte $29) onto your base (bit 3 of the first flags) sets `B_5d36 = 4`:
+won. Without it, your base calls `sub_066c8(..., 5)` (a repair, it seems).

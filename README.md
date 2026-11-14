@@ -10,6 +10,19 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 009: the original's one-player battle
+
+- One of the enemy's big green bunkers is its headquarters, picked at random
+  each game (as the original); the others are decoys. One shell opens it,
+  its inner bunker takes the original's 75, and your flag lies in the ruin
+- Drive over the flag to take it, and bring it home into your garage to win:
+  "YOU HAVE WON!!! and such a glorious battle it was too...", and the final
+  report. Lose your tank on the way and the flag drops where it was
+- Without the flag, your garage repairs your tank (+5 at a time, as the
+  original's sub_066c8 call)
+- Your base (blue) and the loose flag (red) on the maps; what to do next at
+  the top of the screen
+
 ## Version 008
 
 - The enemy's walls, corner posts, bunkers, buildings and helipads in the
@@ -76,8 +89,8 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 - The original explosions and sounds (TankBlast, Boom2, Drip)
 - A mini map, and the full map (Options)
 
-Still to come (from the disassembly, in this order): the enemy's tanks, the
-men to rescue and run over, the flags and the win,
+Still to come (from the disassembly, in this order): the men to rescue and
+run over, the flags and the win,
 the pick screen and its tanks, then two players split-screen.
 
 ## Controls
@@ -134,6 +147,7 @@ firepower/build.sh sim firepower/sim/turret.txt  # a turret fires at the tank; t
 firepower/build.sh sim firepower/sim/gameover.txt   # all three tanks lost
 firepower/build.sh sim firepower/sim/heli.txt    # a helicopter attacks; the tank shoots it down
 firepower/build.sh sim firepower/sim/wall.txt    # shooting a wall open
+firepower/build.sh sim firepower/sim/flag.txt    # the bunkers, the HQ, the flag, home: won
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`
