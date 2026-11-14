@@ -10,6 +10,12 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 027
+
+- SHOW FLAG in the settings menu (off to start, kept for next time): the enemy
+  flag blinks red on the radar while it's still inside the enemy's
+  headquarters - which of its bunkers to shell
+
 ## Version 026
 
 - With your tank full (6 aboard), your other men keep clear of it and wait,
@@ -271,6 +277,7 @@ firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, the garage
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
 firepower/build.sh sim firepower/sim/full.txt    # the tank full: the other men wait clear of it
+firepower/build.sh sim firepower/sim/showflag.txt   # SHOW FLAG: the flag on the radar
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

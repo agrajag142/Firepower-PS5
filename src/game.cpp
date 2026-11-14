@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V026";
+static const char *VERSION = "V027";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -189,6 +189,7 @@ void micromod2_get_audio(short *output_buffer, long count);
 static bool tuneReady[TUNES] = { false, false };
 static float tuneGain[TUNES] = { 0, 0 };            // (the sound thread's)
 static std::atomic<bool> musicOn{true};
+static bool showFlag = false;  // SHOW FLAG in the settings: where the enemy flag is, on the radar
 static bool classic = false;   // CLASSIC in the settings: the original game as it was (on) or with the new features (off)
 static std::atomic<int> musicVol{MUSIC_VOLUME_DEFAULT}, sfxVol{SFX_VOLUME_DEFAULT};   // percent
 static std::atomic<int> tuneWanted{0};              // 0 the title's, 1 the battle's
@@ -1188,6 +1189,8 @@ static void drawMap(int x0, int y0, int cell, float alpha) {
   // your base, and the flag once it's out
   float bx = x0 + ((startSquare / MAPN) + 0.5f) * cell, by = y0 + ((startSquare % MAPN) + 0.5f) * cell;
   pxRect((int)bx - (cell < 6 ? 4 : 7), (int)by - (cell < 6 ? 4 : 7), (int)bx + (cell < 6 ? 4 : 7), (int)by + (cell < 6 ? 4 : 7), rgba(80, 160, 255));
+  if (showFlag && flagState == FLAG_HIDDEN && hqSquare >= 0 && blink > 0)   // SHOW FLAG: in the headquarters
+    pxCircle(x0 + (hqSquare / MAPN + 0.5f) * cell, y0 + (hqSquare % MAPN + 0.5f) * cell, cell < 6 ? 4.5f : 8, rgba(255, 40, 40));
   if (flagState == FLAG_LOOSE && blink > 0)
     pxCircle(x0 + flagX / TILE * cell, y0 + flagY / TILE * cell, cell < 6 ? 4.5f : 8, rgba(255, 40, 40));
 }
@@ -1379,7 +1382,7 @@ static void drawRoofs() {
 #define FP_DATA_DIR "/download0/firepower"   // (the title's own storage: the rest of /data can't be written)
 #define FP_SETTINGS_FILE FP_DATA_DIR "/settings.bin"
 #endif
-enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
+enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
 static int menuSel = 0;
 static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
 static bool quitAsked = false;      // the platform closes the app
@@ -1391,12 +1394,13 @@ static void loadSettings() {
   if (!path) return;
   FILE *f = fopen(path, "rb");
   if (!f) return;
-  uint8_t b[4] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0 };
-  if (fread(b, 1, 4, f) >= 3) {
+  uint8_t b[5] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0 };
+  if (fread(b, 1, 5, f) >= 3) {
     musicOn.store(b[0] != 0);
     musicVol.store(b[1] > 100 ? 100 : b[1]);
     sfxVol.store(b[2] > 100 ? 100 : b[2]);
     classic = b[3] != 0;
+    showFlag = b[4] != 0;
   }
   fclose(f);
 }
@@ -1408,8 +1412,8 @@ static void saveSettings() {
 #endif
   FILE *f = fopen(path, "wb");
   if (!f) return;
-  uint8_t b[4] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic };
-  fwrite(b, 1, 4, f);
+  uint8_t b[5] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag };
+  fwrite(b, 1, 5, f);
   fclose(f);
 }
 
@@ -1454,6 +1458,8 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
     musicOn.store(!musicOn.load());
   } else if (menuSel == MI_CLASSIC && (go || side)) {
     classic = !classic;
+  } else if (menuSel == MI_SHOWFLAG && (go || side)) {
+    showFlag = !showFlag;
   } else if ((menuSel == MI_MUSIC_VOL || menuSel == MI_SFX_VOL) && side) {
     std::atomic<int> &v = menuSel == MI_MUSIC_VOL ? musicVol : sfxVol;
     int nv = v.load() + side * VOLUME_STEP;
@@ -1478,7 +1484,7 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
 static void drawMenu() {
   float cx = state == ST_PLAY ? PLAY_CX : 640;
   blendRect(0, 0, (int)(cx * 2), SCREEN_H - 1, 0, 0, 0, 0.55f);
-  int x0 = (int)cx - 300, x1 = (int)cx + 300, y0 = 100, y1 = y0 + 520;
+  int x0 = (int)cx - 300, x1 = (int)cx + 300, y0 = 70, y1 = y0 + 580;
   fillRect(x0, y0, x1, y1, rgb565(40, 34, 24));
   drawRectOutline(x0, y0, x1, y1, rgb565(200, 140, 60), 3);
   drawVectorText("SETTINGS", cx, y0 + 40, 3.6f, rgb565(230, 160, 70), true);
@@ -1486,18 +1492,18 @@ static void drawMenu() {
   int row = 0;
   for (int i = 0; i < MI_COUNT; i++) {
     if (!menuItemShown(i)) continue;
-    int y = y0 + 130 + row++ * 52;
+    int y = y0 + 125 + row++ * 50;
     bool sel = i == menuSel;
     if (sel) fillRect(x0 + 20, y - 22, x1 - 20, y + 22, rgb565(90, 66, 30));
     uint16_t c = sel ? rgb565(255, 225, 120) : rgb565(225, 220, 205);
-    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
+    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
                         i == MI_RESUME ? "RESUME" :
                         i == MI_TITLE ? (quitArmed == i ? "X AGAIN TO QUIT TO TITLE" : "QUIT TO TITLE") :
                                         (quitArmed == i ? "X AGAIN TO QUIT THE GAME" : "QUIT GAME");
-    if (i <= MI_CLASSIC) {
+    if (i <= MI_SHOWFLAG) {
       drawVectorText(label, x0 + 44 + vectorTextWidth(label, 2.4f) / 2, y, 2.4f, c, true);
-      if (i == MI_MUSIC || i == MI_CLASSIC) {
-        bool on = i == MI_MUSIC ? musicOn.load() : classic;
+      if (i == MI_MUSIC || i == MI_CLASSIC || i == MI_SHOWFLAG) {
+        bool on = i == MI_MUSIC ? musicOn.load() : i == MI_CLASSIC ? classic : showFlag;
         const char *v = on ? "ON" : "OFF";
         drawVectorText(v, x1 - 50 - vectorTextWidth(v, 2.4f) / 2, y, 2.4f, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
       } else {   // a bar of 20 steps and the number

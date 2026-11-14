@@ -1,0 +1,14 @@
+# SHOW FLAG in the settings: the enemy flag (in its headquarters) blinks red on the radar
+tap NEXT
+tap FIRE
+hold NONE 30
+tap MAP
+tap DOWN
+tap DOWN
+tap DOWN
+tap DOWN
+tap FIRE
+shot showflag_menu
+tap MAP
+hold NONE 10
+shot showflag_radar
