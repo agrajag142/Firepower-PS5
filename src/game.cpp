@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V029";
+static const char *VERSION = "V030";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -789,9 +789,15 @@ static void moveMissiles(float dt) {
         addBoom(mm.x, mm.y, false);
         mm.live = false;
       } else if (mm.air && mm.left < HELI_MISSILE_RANGE / HELI_MISSILE_SPEED - 0.15f && solidAt(mm.x, mm.y, false)) {
-        // a helicopter's: it bursts on a building or wall, and does it no harm
-        addBoom(mm.x, mm.y, false);
-        playSound(SND_DRIP, 0.5f);
+        // a helicopter's: it wears down the building or wall it hits, as your shells
+        // do - all but your garage (your base square), which takes no harm
+        int tx = (int)floorf(mm.x / TILE), ty = (int)floorf(mm.y / TILE);
+        if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN || (A.types[field[sq(tx, ty)]].flagsA & 0x08)) {
+          addBoom(mm.x, mm.y, false);
+          playSound(SND_DRIP, 0.5f);
+        } else {
+          hitSquare(tx, ty, mm.x, mm.y);
+        }
         mm.live = false;
       }
     }
