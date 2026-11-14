@@ -31,6 +31,7 @@ static void *stbRealloc(void *p, size_t n) {
 #define STBI_NO_STDIO
 #define STBI_NO_THREAD_LOCALS
 #define STBI_NO_SIMD
+#define STBI_ASSERT(x) ((void)0)   // (the PS5's C library has no __assert)
 #define STBI_NO_HDR
 #define STBI_NO_LINEAR
 #define STBI_MALLOC(n) stbMalloc(n)
