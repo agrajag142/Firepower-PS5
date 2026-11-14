@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
     }
     size_t L = strlen(line);
     if (L && line[L - 1] == '\n') line[L - 1] = 0;
-    printf("%6ld  %-28s %s\n", frame, line, gameDebug());
+    printf("%6ld  %-28s %s%s\n", frame, line, gameDebug(), gameQuitRequested() ? "  [QUIT GAME]" : "");
   }
   return 0;
 }

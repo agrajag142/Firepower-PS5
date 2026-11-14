@@ -109,9 +109,10 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V024";
+static const char *VERSION = "V025";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -171,8 +172,10 @@ static const float HELI_MISSILE_SPEED = 190.0f;
 static const int HELI_MISSILE_DAMAGE = 10;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the music
-#define TITLE_MUSIC_VOLUME 0.85f   // title.mod: 0.0 = off ... 1.0 = full
-#define GAME_MUSIC_VOLUME  0.85f   // game.mod, in the battle
+// (the settings menu changes these; they're kept on the PS5 for next time)
+#define MUSIC_VOLUME_DEFAULT 85    // both tunes: 0 = silent ... 100 = full
+#define SFX_VOLUME_DEFAULT  100    // the game's sounds
+#define VOLUME_STEP           5    // each press of left or right in the menu
 #define MUSIC_FADE_SECONDS 0.8f    // the two cross over
 extern "C" {   // (micromod2.c: a second copy of the MOD player, so each tune keeps its place)
 long micromod2_calculate_mod_file_len(signed char *module_header);
@@ -184,6 +187,8 @@ void micromod2_get_audio(short *output_buffer, long count);
 #define TUNES 2
 static bool tuneReady[TUNES] = { false, false };
 static float tuneGain[TUNES] = { 0, 0 };            // (the sound thread's)
+static std::atomic<bool> musicOn{true};
+static std::atomic<int> musicVol{MUSIC_VOLUME_DEFAULT}, sfxVol{SFX_VOLUME_DEFAULT};   // percent
 static std::atomic<int> tuneWanted{0};              // 0 the title's, 1 the battle's
 static std::atomic<bool> tuneFromStart[TUNES];      // (start it again from the top as it comes in)
 static long (*const modLen[TUNES])(signed char *) = { micromod_calculate_mod_file_len, micromod2_calculate_mod_file_len };
@@ -245,13 +250,13 @@ void gameAudio(short *out, int frames) {
   memset(music, 0, (size_t)frames * 2 * sizeof(float));
   int want = tuneWanted.load(std::memory_order_relaxed);
   for (int k = 0; k < TUNES; k++) {
-    float vol = k == 0 ? TITLE_MUSIC_VOLUME : GAME_MUSIC_VOLUME;
+    float vol = musicOn.load(std::memory_order_relaxed) ? musicVol.load(std::memory_order_relaxed) / 100.0f : 0.0f;
     float target = (tuneReady[k] && want == k) ? vol : 0.0f;
     if (!tuneReady[k] || (tuneGain[k] <= 0 && target <= 0)) continue;
     if (tuneGain[k] <= 0 && tuneFromStart[k].exchange(false)) modPos[k](0);
     memset(tuneBuf, 0, (size_t)frames * 4);
     modAudio[k](tuneBuf, frames);
-    float step = vol / (MUSIC_FADE_SECONDS * 48000);
+    float step = 1.0f / (MUSIC_FADE_SECONDS * 48000);
     for (int n = 0; n < frames; n++) {
       if (tuneGain[k] < target) tuneGain[k] = fminf(tuneGain[k] + step, target);
       else if (tuneGain[k] > target) tuneGain[k] = fmaxf(tuneGain[k] - step, target);
@@ -261,13 +266,14 @@ void gameAudio(short *out, int frames) {
       music[n * 2 + 1] += (mr * 0.62f + ml * 0.25f) * tuneGain[k];
     }
   }
+  float fx = sfxVol.load(std::memory_order_relaxed) / 100.0f;
   for (int i = 0; i < frames; i++) {
     float l = music[i * 2], r = music[i * 2 + 1];
     for (Voice &v : voices) {
       if (!v.data) continue;
       int p = (int)v.pos;
       if (p >= v.len) { v.data = nullptr; continue; }
-      float s = v.data[p] / 128.0f * v.vol;
+      float s = v.data[p] / 128.0f * v.vol * fx;
       l += s * 0.8f;
       r += s * 0.8f;
       v.pos += v.step;
@@ -409,7 +415,8 @@ static float clockT = 0;
 enum State { ST_TITLE, ST_PLAY, ST_OVER, ST_WON };
 static State state = ST_TITLE;
 static float overT = 0;   // on the game over screen
-static bool mapOpen = false;
+static bool menuOpen = false;    // the settings menu (Options): the battle waits
+static bool fireLatch = false;   // X still down from starting (or closing the menu): no shot till it's let go
 static float titleT = 0;
 static char debugText[256];
 
@@ -545,7 +552,8 @@ static void startBattle(int m) {
   for (Boom &b : booms) b.live = false;
   score = destroyed = 0;
   clockT = 0;
-  mapOpen = false;
+  menuOpen = false;
+  fireLatch = true;   // (the X that started the battle doesn't fire)
   state = ST_PLAY;
 }
 
@@ -1317,6 +1325,7 @@ static void drawTitle(float dt) {
     snprintf(buf, sizeof(buf), "BATTLEFIELD %d-%d (TRIANGLE TO CHANGE)", mapChoice < 5 ? 1 : mapChoice < 10 ? 2 : 3,
              mapChoice < 10 ? mapChoice % 5 + 1 : 1);
   drawVectorText(buf, 640, 692, 1.5f, rgb565(170, 170, 170), false);
+  drawVectorText("OPTIONS: SETTINGS", 80, 708, 1.2f, rgb565(110, 110, 110), false);
   drawVectorText(VERSION, 1250, 708, 1.2f, rgb565(110, 110, 110), false);
 }
 
@@ -1348,11 +1357,159 @@ static void drawRoofs() {
     }
 }
 
+// ============================================================ the settings menu
+// Options opens it, on the title screen or in the battle (which waits): the music
+// on or off, its volume, the sounds' volume, and the ways out. Kept on the PS5.
+#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
+#define FP_SETTINGS_FILE nullptr          // (the PC test build: not kept)
+#else
+#define FP_DATA_DIR "/download0/firepower"   // (the title's own storage: the rest of /data can't be written)
+#define FP_SETTINGS_FILE FP_DATA_DIR "/settings.bin"
+#endif
+enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
+static int menuSel = 0;
+static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
+static bool quitAsked = false;      // the platform closes the app
+static uint32_t menuPrevDirs = 0;
+static float menuRepeatT = 0;
+
+static void loadSettings() {
+  const char *path = FP_SETTINGS_FILE;
+  if (!path) return;
+  FILE *f = fopen(path, "rb");
+  if (!f) return;
+  uint8_t b[3];
+  if (fread(b, 1, 3, f) == 3) {
+    musicOn.store(b[0] != 0);
+    musicVol.store(b[1] > 100 ? 100 : b[1]);
+    sfxVol.store(b[2] > 100 ? 100 : b[2]);
+  }
+  fclose(f);
+}
+static void saveSettings() {
+  const char *path = FP_SETTINGS_FILE;
+  if (!path) return;
+#ifdef FP_DATA_DIR
+  mkdir(FP_DATA_DIR, 0777);
+#endif
+  FILE *f = fopen(path, "wb");
+  if (!f) return;
+  uint8_t b[3] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load() };
+  fwrite(b, 1, 3, f);
+  fclose(f);
+}
+
+static bool menuItemShown(int i) { return i != MI_TITLE || state == ST_PLAY; }   // (no battle to leave on the title)
+
+static void openMenu() {
+  menuOpen = true;
+  menuSel = 0;
+  quitArmed = -1;
+  menuPrevDirs = BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN;   // (nothing held moves it till it's let go)
+}
+static void closeMenu() {
+  menuOpen = false;
+  quitArmed = -1;
+  fireLatch = true;   // (the X that closed it doesn't fire)
+  saveSettings();
+}
+
+static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
+  if (pressed & (BTN_MAP | BTN_BACK)) { closeMenu(); return; }
+  // the D-pad or the stick: a press moves once, holding repeats
+  uint32_t dirs = held & (BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN);
+  if (sx < -0.5f) dirs |= BTN_LEFT;
+  if (sx > 0.5f) dirs |= BTN_RIGHT;
+  if (sy < -0.5f) dirs |= BTN_UP;
+  if (sy > 0.5f) dirs |= BTN_DOWN;
+  uint32_t step = dirs & ~menuPrevDirs;
+  if (step) menuRepeatT = 0.4f;
+  else if (dirs) {
+    menuRepeatT -= dt;
+    if (menuRepeatT <= 0) { step = dirs; menuRepeatT = 0.09f; }
+  }
+  menuPrevDirs = dirs;
+  if (step & (BTN_UP | BTN_DOWN)) {
+    int d = (step & BTN_UP) ? -1 : 1;
+    do menuSel = (menuSel + d + MI_COUNT) % MI_COUNT; while (!menuItemShown(menuSel));
+    quitArmed = -1;
+  }
+  int side = (step & BTN_LEFT) ? -1 : (step & BTN_RIGHT) ? 1 : 0;
+  bool go = (pressed & BTN_FIRE) != 0;
+  if (menuSel == MI_MUSIC && (go || side)) {
+    musicOn.store(!musicOn.load());
+  } else if ((menuSel == MI_MUSIC_VOL || menuSel == MI_SFX_VOL) && side) {
+    std::atomic<int> &v = menuSel == MI_MUSIC_VOL ? musicVol : sfxVol;
+    int nv = v.load() + side * VOLUME_STEP;
+    v.store(nv < 0 ? 0 : (nv > 100 ? 100 : nv));
+    if (menuSel == MI_MUSIC_VOL && v.load() > 0) musicOn.store(true);
+    if (menuSel == MI_SFX_VOL) playSound(SND_TANKBLAST);   // (to hear it)
+  } else if (menuSel == MI_RESUME && go) {
+    closeMenu();
+  } else if ((menuSel == MI_TITLE || menuSel == MI_QUIT) && go) {
+    if (quitArmed != menuSel) quitArmed = menuSel;
+    else if (menuSel == MI_TITLE) {
+      closeMenu();
+      state = ST_TITLE;
+      titleT = 0;
+    } else {
+      saveSettings();
+      quitAsked = true;
+    }
+  }
+}
+
+static void drawMenu() {
+  float cx = state == ST_PLAY ? PLAY_CX : 640;
+  blendRect(0, 0, (int)(cx * 2), SCREEN_H - 1, 0, 0, 0, 0.55f);
+  int x0 = (int)cx - 300, x1 = (int)cx + 300, y0 = 130, y1 = 600;
+  fillRect(x0, y0, x1, y1, rgb565(40, 34, 24));
+  drawRectOutline(x0, y0, x1, y1, rgb565(200, 140, 60), 3);
+  drawVectorText("SETTINGS", cx, y0 + 40, 3.6f, rgb565(230, 160, 70), true);
+  if (state == ST_PLAY) drawVectorText("THE BATTLE WAITS", cx, y0 + 76, 1.6f, rgb565(200, 190, 160), false);
+  int row = 0;
+  for (int i = 0; i < MI_COUNT; i++) {
+    if (!menuItemShown(i)) continue;
+    int y = y0 + 130 + row++ * 52;
+    bool sel = i == menuSel;
+    if (sel) fillRect(x0 + 20, y - 22, x1 - 20, y + 22, rgb565(90, 66, 30));
+    uint16_t c = sel ? rgb565(255, 225, 120) : rgb565(225, 220, 205);
+    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
+                        i == MI_RESUME ? "RESUME" :
+                        i == MI_TITLE ? (quitArmed == i ? "X AGAIN TO QUIT TO TITLE" : "QUIT TO TITLE") :
+                                        (quitArmed == i ? "X AGAIN TO QUIT THE GAME" : "QUIT GAME");
+    if (i <= MI_SFX_VOL) {
+      drawVectorText(label, x0 + 44 + vectorTextWidth(label, 2.4f) / 2, y, 2.4f, c, true);
+      if (i == MI_MUSIC) {
+        bool on = musicOn.load();
+        const char *v = on ? "ON" : "OFF";
+        drawVectorText(v, x1 - 50 - vectorTextWidth(v, 2.4f) / 2, y, 2.4f, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
+      } else {   // a bar of 20 steps and the number
+        int v = (i == MI_MUSIC_VOL ? musicVol : sfxVol).load();
+        bool dim = i == MI_MUSIC_VOL && !musicOn.load();
+        int bx0 = x1 - 250, bx1 = x1 - 110;
+        fillRect(bx0, y - 8, bx1, y + 8, rgb565(20, 16, 10));
+        if (v > 0) fillRect(bx0, y - 8, bx0 + (bx1 - bx0) * v / 100, y + 8, dim ? rgb565(110, 100, 80) : rgb565(230, 160, 70));
+        char num[8];
+        snprintf(num, sizeof(num), "%d", v);
+        drawVectorText(num, x1 - 60, y, 2.0f, c, false);
+      }
+    } else {
+      drawVectorText(label, cx, y, 2.4f, quitArmed == i ? rgb565(255, 90, 60) : c, true);
+    }
+  }
+  drawVectorText("UP / DOWN: CHOOSE   LEFT / RIGHT: CHANGE   X: SELECT   CIRCLE: BACK", cx, y1 - 26, 1.2f,
+                 rgb565(180, 170, 150), false);
+}
+
+bool gameQuitRequested() { return quitAsked; }
+
 // ============================================================ the frame
 void gameInit(uint32_t seed, const char *dir) {
   rng = seed | 1;
   gfxInit();
   assetsLoad(dir);
+  loadSettings();
   state = ST_TITLE;
 }
 
@@ -1364,6 +1521,16 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
       tuneFromStart[want].store(true);
       tuneWanted.store(want, std::memory_order_relaxed);
     }
+  }
+  if (menuOpen || ((pressed & BTN_MAP) && (state == ST_TITLE || state == ST_PLAY))) {   // the settings menu, over the title or the battle
+    if (!menuOpen) openMenu();
+    else updateMenu(dt, held, pressed, sx, sy);
+    if (state == ST_TITLE) {
+      drawTitle(dt);
+      if (menuOpen) drawMenu();
+      return;
+    }
+    if (state != ST_PLAY) menuOpen = false;
   }
   if (state == ST_TITLE) {
     if (A.ok && (pressed & BTN_NEXT)) mapChoice = mapChoice >= 10 ? -1 : mapChoice + 1;
@@ -1381,18 +1548,12 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     }
     return;
   }
-  clockT += dt;
-  if (pressed & BTN_MAP) mapOpen = !mapOpen;
-  if (mapOpen && (pressed & BTN_BACK)) {
-    state = ST_TITLE;
-    titleT = 0;
-    drawTitle(dt);
-    return;
-  }
-  if (!mapOpen) {
+  if (!menuOpen) clockT += dt;
+  if (!(held & BTN_FIRE)) fireLatch = false;
+  if (!menuOpen) {
     if (tank.alive) moveTank(dt, held, sx, sy);
     tank.reload -= dt;
-    if (tank.alive && (held & BTN_FIRE) && tank.reload <= 0) {
+    if (tank.alive && (held & BTN_FIRE) && !fireLatch && tank.reload <= 0) {
       fire();
       tank.reload = RELOAD;
     }
@@ -1441,13 +1602,9 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     drawPic2x(A.heliEnemy.pic[frameOf(h.heading)], h.x, h.y);   // the enemy's: green
     drawPic2x(A.heli.pic[16 + ((int)(clockT * 20) & 1)], h.x, h.y);
   }
-  drawBooms(mapOpen ? 0 : dt);
+  drawBooms(menuOpen ? 0 : dt);
   drawHud();
-  if (mapOpen) {
-    drawMap((PLAY_W - MAPN * 14) / 2, 100, 14, 0.8f);
-    pxBlend(0, FB_H - 70, PLAY_W - 1, FB_H - 1, 0, 0, 0, 0.6f);
-    drawVectorText("OPTIONS: BACK TO THE BATTLE    CIRCLE: TITLE SCREEN", PLAY_CX, 697, 1.4f, rgb565(230, 230, 230), false);
-  }
+  if (menuOpen) drawMenu();
   float hd = -1;
   int nm = 0;
   int nh = 0;

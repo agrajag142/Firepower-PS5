@@ -9,9 +9,9 @@
 enum : uint32_t {
   BTN_LEFT = 0x01, BTN_RIGHT = 0x02, BTN_UP = 0x04, BTN_DOWN = 0x08,   // D-pad: turn, forward, reverse
   BTN_FIRE = 0x10,    // Cross / R2 / R1: fire
-  BTN_MAP = 0x20,     // Options / touchpad: the full map
+  BTN_MAP = 0x20,     // Options / touchpad: the settings menu
   BTN_NEXT = 0x40,    // Triangle: the next battlefield (title screen)
-  BTN_BACK = 0x80,    // Circle: back to the title screen (with the map open)
+  BTN_BACK = 0x80,    // Circle: out of the settings menu
   BTN_REVERSE = 0x100,   // Square: reverse (straight back)
 };
 
@@ -26,6 +26,8 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy);
 void gameSetTune(int which, signed char *data, long len);
 // Stereo 16-bit samples at 48 kHz, from the platform's sound thread
 void gameAudio(short *out, int frames);
+// QUIT GAME chosen in the settings menu: the platform closes the app
+bool gameQuitRequested();
 const char *gameDebug();                          // (the PC test build: where the tank is)
 void gameDebugTank(float *x, float *y, float *heading);
 void gameDebugPlace(float x, float y, float heading);   // (the PC test build: put the tank somewhere)

@@ -1,0 +1,35 @@
+# The settings menu: X on the title starts without a shot; Options opens the menu
+# (the battle waits), the volumes change, resume, quit to title, quit game
+shot title_plain
+tap MAP
+shot title_menu
+tap MAP
+tap NEXT
+hold FIRE 30
+shot start_no_shot
+hold NONE 2
+hold FIRE 2
+hold NONE 30
+shot fires_after_release
+tap MAP
+tap DOWN
+tap LEFT
+tap LEFT
+tap LEFT
+tap DOWN
+tap LEFT
+shot menu_battle
+tap BACK
+hold NONE 5
+tap MAP
+tap UP
+tap UP
+tap FIRE
+shot quit_armed
+tap FIRE
+shot back_on_title
+tap MAP
+tap UP
+shot title_quit
+tap FIRE
+tap FIRE

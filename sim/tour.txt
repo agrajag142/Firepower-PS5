@@ -17,6 +17,6 @@ hold FIRE 110
 hold NONE 40
 shot fire
 tap MAP
-shot map
+shot settings
 tap MAP
 wav 3 shooting

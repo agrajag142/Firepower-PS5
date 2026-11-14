@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 025
+
+- Options opens the settings menu (on the title screen or in the battle, which
+  waits): the music on or off, the music's volume, the sound effects' volume,
+  resume, quit to the title and quit the game (X twice for those two). They're
+  kept for next time. (The full map is gone: the panel's radar shows it)
+- The X that starts a battle no longer fires a shot: the tank fires once it's
+  been let go and pressed again (the same after closing the menu)
+
 ## Version 024
 
 - A destroyed building is open ground, as on the Amiga: the tank drives right
@@ -200,7 +209,7 @@ the pick screen and its tanks, then two players split-screen.
 | D-pad | the same, 8 ways: the tank turns the way pressed and drives |
 | Square | reverse (straight back) |
 | Cross, R1 or R2 | fire |
-| Options or the touchpad | the full map (Circle there: back to the title screen) |
+| Options or the touchpad | the settings menu (Circle or Options again: back) |
 | Triangle (title screen) | choose a battlefield (or back to any of the five, at random) |
 
 ## You need your Firepower disk
@@ -252,6 +261,7 @@ firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard
 firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, the garage
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
+firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```
 
