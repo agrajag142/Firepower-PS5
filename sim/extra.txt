@@ -1,5 +1,6 @@
 # 15 men rescued: an extra tank (men put by the first-aid station, the tank stopped to its right)
 god on
+tap NEXT
 tap FIRE
 hold NONE 2
 place 1376 800 12

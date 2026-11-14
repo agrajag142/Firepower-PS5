@@ -140,6 +140,7 @@ bool assetsLoad(const char *dir) {
   munmap(op, (size_t)len);
 
   if (!loadScreen("gr/fp.title", A.title)) return false;
+  if (!loadScreen("gr/oneplayer", A.onePlayer)) return false;
   static PicSet tiles, tilesE;
   if (!loadSet("gr/tiles", tiles, true) || tiles.n < 50) return false;
   gClear = 8;   // the enemy's: as the original blits its copies (sub_0534c: planes in byte $1a cleared)

@@ -1,6 +1,7 @@
 # Fuel (battlefield 1): with none the tank crawls; destroying an enemy fuel depot (square
 # 58,1) fills it; driving uses it; the garage refuels
 god on
+tap NEXT
 tap FIRE
 hold NONE 2
 place 3744 168 8

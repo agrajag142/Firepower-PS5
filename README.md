@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 020
+
+- The original's panel on the right (from its one-player screen, scaled to the
+  TV's height, in its camouflage): the score in its own digits, your men
+  aboard, your tanks, the fuel, the radar, and your armour (a bar in the gap
+  between the men and the tanks). The battle view is the rest of the screen
+- X starts a battle on one of the five one-player battlefields at random, as
+  the original. Triangle on the title screen picks one instead (any of the 11)
+
 ## Version 019
 
 - Square reverses: the tank backs straight up, the way it faces
@@ -168,7 +177,7 @@ the pick screen and its tanks, then two players split-screen.
 | Square | reverse (straight back) |
 | Cross, R1 or R2 | fire |
 | Options or the touchpad | the full map (Circle there: back to the title screen) |
-| Triangle (title screen) | the next battlefield |
+| Triangle (title screen) | choose a battlefield (or back to any of the five, at random) |
 
 ## You need your Firepower disk
 
@@ -221,7 +230,7 @@ firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, 
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
 ```
 
-It runs the same game code with a scripted controller (see `sim/sim_main.cpp`
+(The scripts press Triangle first, so they play battlefield 1-1.) It runs the same game code with a scripted controller (see `sim/sim_main.cpp`
 for the commands), so a change can be checked on the PC before it goes on the
 console.
 

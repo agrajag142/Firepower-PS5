@@ -6,6 +6,12 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 020: the original's panel on the right (from its one-player screen,
+// scaled to the TV's height) with the score in its own digits, your men, your
+// tanks, the fuel, the radar and your armour; the battle view beside it.
+// X starts a battle on one of the five one-player battlefields at random, as
+// the original; Triangle on the title screen picks one instead.
+//
 // Version 019: Square reverses (straight back, as it faces).
 //
 // Version 018: the tank moves exactly the way its picture faces (one of the
@@ -93,12 +99,17 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V019";
+static const char *VERSION = "V020";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
 static const float WORLD = TILE * MAPN;    // 4096
-static const float VIEW_W = FB_W / S, VIEW_H = FB_H / S;   // 960 x 540 Amiga pixels in view
+// The panel: the right of the original's one-player screen (x 240 on), scaled to the TV's height
+static const float PANEL_K = FB_H / 232.0f;                     // 4.66 screen pixels an Amiga pixel
+static const int PANEL_X0 = FB_W - (int)((352 - 240) * PANEL_K);   // where it starts on the TV
+static const int PLAY_W = PANEL_X0;                             // the battle view: the rest
+static const float VIEW_W = PLAY_W / S, VIEW_H = FB_H / S;      // ~700 x 540 Amiga pixels in view
+static const float PLAY_CX = PLAY_W / 2 / UNIT_K;               // its middle, in drawing units
 
 static const float TANK_SPEED = 72.0f;     // forward, Amiga pixels a second
 static const float TANK_REVERSE = 40.0f;
@@ -205,6 +216,7 @@ void gameAudio(short *out, int frames) {
 static uint8_t field[MAPN * MAPN];   // the squares now (x * 64 + y, as the disk has them)
 static int strength[MAPN * MAPN];    // what's left of each square
 static int mapNo = 0;                // 0..10: mapp1/t1..t5, mapp2/t1..t5, mapp3/t1
+static int mapChoice = -1;           // the title screen's: -1 at random (of the one-player five), else that one
 
 static inline int sq(int tx, int ty) { return tx * MAPN + ty; }
 static inline const TileType &typeAt(int tx, int ty) { return A.types[field[sq(tx, ty)]]; }
@@ -1093,58 +1105,93 @@ static void drawMap(int x0, int y0, int cell, float alpha) {
     pxCircle(x0 + flagX / TILE * cell, y0 + flagY / TILE * cell, cell < 6 ? 4.5f : 8, rgba(255, 40, 40));
 }
 
+// A picture scaled by k (nearest pixel), its top left at sx, sy
+static void drawPicK(const Pic &p, float sx, float sy, float k) {
+  int w = (int)(p.w * k), h = (int)(p.h * k);
+  for (int y = 0; y < h; y++) {
+    int yy = (int)sy + y;
+    if (yy < 0 || yy >= FB_H) continue;
+    const uint32_t *src = p.px + (int)(y / k) * p.w;
+    uint32_t *row = g_frame + (size_t)yy * FB_W;
+    for (int x = 0; x < w; x++) {
+      int xx = (int)sx + x;
+      uint32_t c = src[(int)(x / k)];
+      if (xx >= 0 && xx < FB_W && (c >> 24)) row[xx] = c;
+    }
+  }
+}
+
+// The original's panel coordinates (its one-player screen, 352 x 232) on the TV
+static inline float panelX(float ax) { return PANEL_X0 + (ax - 240) * PANEL_K; }
+static inline float panelY(float ay) { return ay * PANEL_K; }
+
+// A number in the original's digits (gr/numbers 0..9), right-aligned to Amiga x right
+static void panelDigits(int value, int digits, float right, float ay) {
+  if (A.numbers.n < 10) return;
+  for (int k = 0; k < digits; k++) {
+    int d = value % 10;
+    value /= 10;
+    drawPicK(A.numbers.pic[d], panelX(right - (k + 1) * 9 + 2), panelY(ay), PANEL_K);
+  }
+}
+
+static void drawPanel() {
+  // the right of the one-player screen: the camouflage and the panel
+  const Pic &p = A.onePlayer;
+  for (int y = 0; y < FB_H; y++) {
+    const uint32_t *src = p.px + (int)(y / PANEL_K) * p.w;
+    uint32_t *row = g_frame + (size_t)y * FB_W;
+    for (int x = PANEL_X0; x < FB_W; x++) row[x] = src[240 + (int)((x - PANEL_X0) / PANEL_K)];
+  }
+  // the score (5 digits, 6 when it needs them), your men aboard, your tanks
+  panelDigits(score, score > 99999 ? 6 : 5, 313, 45);
+  panelDigits(aboard, 2, 302, 66);
+  int spare = tanksLeft - (tank.alive ? 1 : 0);
+  panelDigits(spare < 0 ? 0 : spare > 9 ? 9 : spare, 1, 302, 100);
+  // fuel: the bar in its box
+  float fw = (313 - 266) * tank.fuel / 100;
+  uint32_t fcol = tank.fuel > 25 ? rgba(190, 220, 255) : (fmodf(clockT, 0.6f) < 0.35f ? rgba(255, 70, 50) : rgba(120, 30, 20));
+  if (fw > 0) pxRect((int)panelX(267), (int)panelY(139), (int)panelX(267 + fw) - 1, (int)panelY(146) - 1, fcol);
+  // armour (not on the original's panel): a bar in the gap between the men and the tanks
+  int ax0 = (int)panelX(266), ax1 = (int)panelX(313), ay0 = (int)panelY(80), ay1 = (int)panelY(90);
+  pxRect(ax0 - 4, ay0 - 4, ax1 + 4, ay1 + 4, rgba(40, 30, 20));
+  pxRect(ax0 - 2, ay0 - 2, ax1 + 2, ay1 + 2, rgba(200, 140, 70));
+  pxRect(ax0, ay0, ax1, ay1, rgba(0, 0, 0));
+  int aw = (ax1 - ax0) * tank.armour / 100;
+  uint32_t acol = tank.armour > 50 ? rgba(110, 220, 60) : tank.armour > 25 ? rgba(240, 200, 40) : rgba(230, 60, 40);
+  if (aw > 0) pxRect(ax0, ay0, ax0 + aw, ay1, acol);
+  // the radar: the battlefield in its box
+  int box = (int)((313 - 266) * PANEL_K), cell = 3;
+  drawMap((int)panelX(266) + (box - MAPN * cell) / 2, (int)panelY(158) + (box - MAPN * cell) / 2, cell, 1.0f);
+}
+
 static void drawHud() {
-  pxBlend(0, 0, FB_W - 1, 59, 0, 0, 0, 0.55f);
+  drawPanel();
+  // over the battle view: the battlefield, what to do, the messages
   uint16_t ink = rgb565(255, 210, 120), dim = rgb565(170, 140, 90);
-  drawVectorText("FIREPOWER", 90, 20, 2.4f, ink, true);
-  char buf[64];
-  snprintf(buf, sizeof(buf), "SCORE %06d", score);
-  drawVectorText(buf, 640, 20, 2.4f, ink, true);
+  char buf[96];
+  pxBlend(0, 0, PLAY_W - 1, 44, 0, 0, 0, 0.5f);
   snprintf(buf, sizeof(buf), "BATTLEFIELD %d-%d", mapNo < 5 ? 1 : mapNo < 10 ? 2 : 3, mapNo < 10 ? mapNo % 5 + 1 : 1);
-  drawVectorText(buf, 1130, 20, 2.0f, ink, true);
-  drawVectorText(VERSION, 1250, 708, 1.2f, dim, false);
-  snprintf(buf, sizeof(buf), "DESTROYED %d", destroyed);
-  drawVectorText(buf, 90, 708, 1.4f, dim, false);
-  // what to do
+  drawVectorText(buf, 90, 15, 1.4f, ink, false);
   const char *goal = flagState == FLAG_HIDDEN ? "FIND THE ENEMY HQ AND TAKE BACK YOUR FLAG"
                      : flagState == FLAG_LOOSE ? "YOUR FLAG IS LOOSE - PICK IT UP"
                                                : "BRING THE FLAG HOME TO YOUR BASE";
-  pxBlend(560, 62, 1360, 98, 0, 0, 0, 0.45f);
-  drawVectorText(goal, 640, 53, 1.4f, flagState == FLAG_CARRIED ? rgb565(255, 230, 90) : rgb565(230, 230, 230), false);
-  // armour and the tanks left, bottom left
-  pxBlend(16, FB_H - 120, 420, FB_H - 70, 0, 0, 0, 0.5f);
-  drawVectorText("ARMOUR", 70, 650, 1.4f, ink, false);
-  int bx0 = 170, by0 = FB_H - 108, bw = 230, bh = 26;
-  pxRect(bx0 - 2, by0 - 2, bx0 + bw + 1, by0 + bh + 1, rgba(60, 50, 40));
-  int fillW = bw * tank.armour / 100;
-  uint32_t col = tank.armour > 50 ? rgba(90, 200, 60) : tank.armour > 25 ? rgba(240, 200, 40) : rgba(230, 60, 40);
-  if (fillW > 0) pxRect(bx0, by0, bx0 + fillW - 1, by0 + bh - 1, col);
-  for (int k = 0; k < tanksLeft - (tank.alive ? 1 : 0) && k < 9; k++)
-    drawPic2x(A.tank.pic[0], camX + (440 + k * 56) / (float)S, camY + (FB_H - 95) / (float)S);
-  // fuel, under the armour
-  pxBlend(16, FB_H - 68, 420, FB_H - 28, 0, 0, 0, 0.5f);
-  drawVectorText("FUEL", 70, 685, 1.4f, ink, false);
-  int fy0 = FB_H - 60;
-  pxRect(bx0 - 2, fy0 - 2, bx0 + bw + 1, fy0 + bh + 1, rgba(60, 50, 40));
-  int fuelW = (int)(bw * tank.fuel / 100);
-  uint32_t fcol = tank.fuel > 25 ? rgba(80, 160, 255) : rgba(230, 60, 40);
-  if (fuelW > 0) pxRect(bx0, fy0, bx0 + fuelW - 1, fy0 + bh - 1, fcol);
-  snprintf(buf, sizeof(buf), "MINES %d", mines);
-  drawVectorText(buf, 330, 685, 1.2f, dim, false);
+  drawVectorText(goal, PLAY_CX + 60, 15, 1.4f, flagState == FLAG_CARRIED ? rgb565(255, 230, 90) : rgb565(230, 230, 230), false);
+  drawVectorText(VERSION, 30, 708, 1.1f, dim, false);
   if (tank.alive && tank.fuel < 15 && fmodf(clockT, 0.8f) < 0.5f)
-    drawVectorText(tank.fuel <= 0 ? "OUT OF FUEL - BACK TO YOUR GARAGE" : "LOW FUEL", 640, 200, 2.2f, rgb565(255, 90, 60), true);
+    drawVectorText(tank.fuel <= 0 ? "OUT OF FUEL - BACK TO YOUR GARAGE" : "LOW FUEL", PLAY_CX, 200, 2.2f, rgb565(255, 90, 60), true);
   if (fuelT > 0) {
     fuelT -= 1 / 60.0f;
-    drawVectorText("REFUELLED", 640, 200, 2.4f, rgb565(120, 190, 255), true);
+    drawVectorText("REFUELLED", PLAY_CX, 200, 2.4f, rgb565(120, 190, 255), true);
   }
   if (extraT > 0) {
     extraT -= 1 / 60.0f;
-    if (fmodf(extraT, 0.5f) < 0.35f) drawVectorText("EXTRA TANK!", 640, 160, 3.0f, rgb565(255, 230, 90), true);
+    if (fmodf(extraT, 0.5f) < 0.35f) drawVectorText("EXTRA TANK!", PLAY_CX, 160, 3.0f, rgb565(255, 230, 90), true);
   }
   if (aboard) {
     snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d - STOP RIGHT OF THE FIRST-AID STATION", aboard, TANK_ROOM);
-    pxBlend(16, FB_H - 170, 900, FB_H - 128, 0, 0, 0, 0.45f);
-    drawVectorText(buf, 300, 615, 1.4f, rgb565(255, 230, 90), false);
+    pxBlend(0, FB_H - 64, PLAY_W - 1, FB_H - 20, 0, 0, 0, 0.45f);
+    drawVectorText(buf, PLAY_CX, 694, 1.4f, rgb565(255, 230, 90), false);
   }
 }
 
@@ -1192,7 +1239,11 @@ static void drawTitle(float dt) {
   }
   if (fmodf(titleT, 1.0f) < 0.7f) drawVectorText("PRESS X TO START", 640, 655, 2.6f, rgb565(255, 220, 120), true);
   char buf[64];
-  snprintf(buf, sizeof(buf), "TRIANGLE: BATTLEFIELD %d-%d", mapNo < 5 ? 1 : mapNo < 10 ? 2 : 3, mapNo < 10 ? mapNo % 5 + 1 : 1);
+  if (mapChoice < 0)
+    snprintf(buf, sizeof(buf), "BATTLEFIELD: ANY OF THE FIVE (TRIANGLE TO CHOOSE)");
+  else
+    snprintf(buf, sizeof(buf), "BATTLEFIELD %d-%d (TRIANGLE TO CHANGE)", mapChoice < 5 ? 1 : mapChoice < 10 ? 2 : 3,
+             mapChoice < 10 ? mapChoice % 5 + 1 : 1);
   drawVectorText(buf, 640, 692, 1.5f, rgb565(170, 170, 170), false);
   drawVectorText(VERSION, 1250, 708, 1.2f, rgb565(110, 110, 110), false);
 }
@@ -1236,8 +1287,8 @@ void gameInit(uint32_t seed, const char *dir) {
 void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   if (dt > 0.1f) dt = 0.1f;
   if (state == ST_TITLE) {
-    if (A.ok && (pressed & BTN_NEXT)) mapNo = (mapNo + 1) % 11;
-    if (A.ok && (pressed & BTN_FIRE)) startBattle(mapNo);
+    if (A.ok && (pressed & BTN_NEXT)) mapChoice = mapChoice >= 10 ? -1 : mapChoice + 1;
+    if (A.ok && (pressed & BTN_FIRE)) startBattle(mapChoice >= 0 ? mapChoice : (int)(rnd() * 5) % 5);
     else {
       drawTitle(dt);
       return;
@@ -1277,7 +1328,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   }
 
   // the view follows the tank
-  camX = tank.x - VIEW_W / 2;
+  camX = tank.x - VIEW_W / 2;   // (the battle view: left of the panel)
   camY = tank.y - VIEW_H / 2;
   camX = camX < 0 ? 0 : (camX > WORLD - VIEW_W ? WORLD - VIEW_W : camX);
   camY = camY < 0 ? 0 : (camY > WORLD - VIEW_H ? WORLD - VIEW_H : camY);
@@ -1314,11 +1365,9 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   drawBooms(mapOpen ? 0 : dt);
   drawHud();
   if (mapOpen) {
-    drawMap((FB_W - MAPN * 14) / 2, 100, 14, 0.8f);
-    pxBlend(0, FB_H - 70, FB_W - 1, FB_H - 1, 0, 0, 0, 0.6f);
-    drawVectorText("OPTIONS: BACK TO THE BATTLE    CIRCLE: TITLE SCREEN", 640, 697, 1.4f, rgb565(230, 230, 230), false);
-  } else {
-    drawMap(FB_W - MAPN * 3 - 24, FB_H - MAPN * 3 - 24, 3, 0.5f);
+    drawMap((PLAY_W - MAPN * 14) / 2, 100, 14, 0.8f);
+    pxBlend(0, FB_H - 70, PLAY_W - 1, FB_H - 1, 0, 0, 0, 0.6f);
+    drawVectorText("OPTIONS: BACK TO THE BATTLE    CIRCLE: TITLE SCREEN", PLAY_CX, 697, 1.4f, rgb565(230, 230, 230), false);
   }
   float hd = -1;
   int nm = 0;

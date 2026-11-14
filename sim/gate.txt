@@ -1,4 +1,5 @@
 # Out of the garage and through the compound's gate (battlefield 1)
+tap NEXT
 tap FIRE
 hold NONE 2
 shot garage

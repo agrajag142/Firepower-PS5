@@ -1,4 +1,5 @@
 # A turret (battlefield 1, square 30,10): it turns to the tank and fires; the tank shoots back
+tap NEXT
 tap FIRE
 hold NONE 2
 place 2080 670 12

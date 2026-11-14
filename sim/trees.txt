@@ -1,4 +1,5 @@
 # Driving into a tree (battlefield 1, below the compound): under its leaves, stopped by its trunk
+tap NEXT
 tap FIRE
 hold NONE 2
 place 1350 990 4
