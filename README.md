@@ -10,6 +10,13 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 012
+
+- The men walk slower
+- They get out at your first-aid station (the red cross, type 24), as the
+  original's instructions say: stop on the square to its right and they climb
+  out one at a time and run in - rescued (200 each). (Your garage only repairs.)
+
 ## Version 011: the men
 
 - Destroying a building or post lets out the men inside it, as the original:
@@ -19,7 +26,7 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 - The enemy's men run from your tank; run them over (Splat, and the blood
   stays: 50 points each)
 - Your men run to your tank when it's stopped and climb aboard (6 at most);
-  bring them home into your garage and they're rescued (200 each). Drive into
+  bring them to your first-aid station and they're rescued (200 each). Drive into
   them and they're lost; lose the tank and so are the men aboard
 - The final report: INFLICTED (destroyed, helicopters, men), RESCUED,
   CASUALTIES (tanks, men)

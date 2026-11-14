@@ -1,5 +1,6 @@
 # The men (battlefield 1): shell one of your own buildings in the compound - its 5 men run
-# out; stopped, the tank takes them aboard; into the garage, they're rescued. Then the
+# out; stopped, the tank takes them aboard; stopped right of the first-aid station (the red
+# cross, square 20,12), they get out and run in: rescued. Then the
 # enemy's: a turret bunker by the HQ lets out 2 green men, run over
 god on
 tap FIRE
@@ -8,11 +9,12 @@ place 1376 830 0
 hold FIRE 90
 hold NONE 20
 shot men0
-hold NONE 300
+hold NONE 650
 shot men1
-place 1440 800 0
-hold UP 50
-hold NONE 10
+place 1376 800 12
+hold NONE 60
+shot men2a
+hold NONE 200
 shot men2
 place 1696 1184 2
 hold FIRE 100

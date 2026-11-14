@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 012: the men walk slower, and get out at your first-aid station
+// (type 24, the red cross): stop on the square to its right and they climb
+// out and run in, as the original's instructions say.
+//
 // Version 011: the men. Destroying a building or post lets out the men in it
 // (the low 4 bits of its side byte; bit 7: yours, brown - bit 6: the enemy's,
 // green - as the original's square-destroyed code, sub_02566). Running over a
@@ -67,7 +71,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V011";
+static const char *VERSION = "V012";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -97,7 +101,8 @@ static const int MISSILE_DAMAGE = 12;      // of your tank's 100 armour
 static const int TANKS = 3;                // tanks you have
 static const float RESPAWN = 2.5f;         // seconds before the next tank comes out
 static const int DECOY_STRENGTH = 40;      // a decoy bunker's inside (the real one's: the original's 75)
-static const float MAN_SPEED = 14.0f;      // Amiga pixels a second (running: x1.7)
+static const float MAN_SPEED = 9.0f;       // Amiga pixels a second (running: x1.5)
+static const float UNLOAD_EVERY = 0.45f;   // seconds between men getting out at the first-aid station
 static const int TANK_ROOM = 6;            // men your tank can carry
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
@@ -253,11 +258,15 @@ struct Man {
   bool live = false;
   float x, y, dx, dy, turn;
   int side;                 // 0 yours (brown), 1 the enemy's (green): the Men file's pictures 0/2 and 1/3
+  bool inside;              // getting out of your tank and running into the first-aid station
+  float gx, gy;             // (where to)
 };
 struct Splat { float x, y; };
 static Man men[200];
 static Splat splats[96];
 static int nSplats = 0, aboard = 0, rescued = 0, menLost = 0, menKilled = 0;
+static float unloadT = 0;
+static float aidX = 20, aidY = 32;   // the red cross in the first-aid station's square (from its picture)
 static Heli helis[HELI_MAX];
 static float heliTimer = 0;
 // the flag: in the enemy's headquarters, lying loose, or on your tank
@@ -395,6 +404,16 @@ static void startBattle(int m) {
   for (Heli &h : helis) h.live = false;
   heliTimer = HELI_FIRST;
   for (Man &mn : men) mn.live = false;
+  unloadT = 0;
+  {   // where the red cross is in the first-aid station's picture
+    const Pic &p = A.tiles[A.types[24].pic];
+    float sxs = 0, sys = 0;
+    int n = 0;
+    for (int y = 0; y < 128; y++)
+      for (int x = 0; x < 128; x++)
+        if (p.px[y * 128 + x] == A.pal[8]) { sxs += x; sys += y; n++; }
+    if (n) { aidX = sxs / n / 2; aidY = sys / n / 2; }
+  }
   nSplats = aboard = rescued = menLost = menKilled = 0;
   helisDown = 0;
   for (Shell &s : shells) s.live = false;
@@ -756,6 +775,7 @@ static void releaseMen(int tx, int ty, int n, int side) {
       if (!m.live) {
         m.live = true;
         m.side = side;
+        m.inside = false;
         m.x = tx * TILE + 16 + rnd() * 32;
         m.y = ty * TILE + 16 + rnd() * 32;
         manHeading(m, rnd() * TWO_PI);
@@ -774,17 +794,33 @@ static void updateMen(float dt) {
   bool moving = fabsf(tank.speed) > 8;
   for (Man &m : men) {
     if (!m.live) continue;
+    if (m.inside) {   // into the first-aid station: rescued when he gets there
+      float gx = m.gx - m.x, gy = m.gy - m.y, gd = sqrtf(gx * gx + gy * gy) + 0.01f;
+      m.dx = gx / gd;
+      m.dy = gy / gd;
+      float step = MAN_SPEED * 1.5f * dt;
+      if (gd <= step + 1) {
+        m.live = false;
+        rescued++;
+        score += 200;
+        playSound(SND_DRIP, 0.5f);
+      } else {
+        m.x += m.dx * step;
+        m.y += m.dy * step;
+      }
+      continue;
+    }
     float tx = tank.x - m.x, ty = tank.y - m.y, d = sqrtf(tx * tx + ty * ty) + 0.01f;
     float speed = MAN_SPEED;
     m.turn -= dt;
     if (tank.alive && m.side == 1 && d < 120) {         // the enemy's run from your tank
       m.dx = -tx / d;
       m.dy = -ty / d;
-      speed *= 1.7f;
+      speed *= 1.5f;
     } else if (tank.alive && m.side == 0 && d < 160 && !moving) {   // yours run to it
       m.dx = tx / d;
       m.dy = ty / d;
-      speed *= 1.7f;
+      speed *= 1.5f;
     } else if (m.turn <= 0) {                           // or wander
       manHeading(m, rnd() * TWO_PI);
       m.turn = 1 + rnd() * 2.5f;
@@ -814,6 +850,31 @@ static void updateMen(float dt) {
       }
     }
   }
+  // stopped on the square to the right of your first-aid station (type 24), the men get out
+  // one at a time and run in
+  int sx = (int)floorf(tank.x / TILE) - 1, sy = (int)floorf(tank.y / TILE);
+  bool atAid = tank.alive && aboard > 0 && fabsf(tank.speed) < 2 && sx >= 0 && sy >= 0 && sx < MAPN &&
+               sy < MAPN && field[sq(sx, sy)] == 24;
+  if (!atAid) {
+    unloadT = 0;
+    return;
+  }
+  unloadT -= dt;
+  if (unloadT > 0) return;
+  unloadT = UNLOAD_EVERY;
+  for (Man &m : men)
+    if (!m.live) {
+      m.live = true;
+      m.side = 0;
+      m.inside = true;
+      m.x = tank.x - 8;
+      m.y = tank.y + (rnd() - 0.5f) * 8;
+      m.gx = sx * TILE + aidX;
+      m.gy = sy * TILE + aidY;
+      m.turn = 0;
+      aboard--;
+      break;
+    }
 }
 
 // After a tank is lost: the next comes out of the garage, or it's over
@@ -831,12 +892,6 @@ static void updateFlag(float dt) {
   int tx = (int)floorf(tank.x / TILE), ty = (int)floorf(tank.y / TILE);
   bool home = tx >= 0 && ty >= 0 && tx < MAPN && ty < MAPN && (typeAt(tx, ty).flagsA & 0x08);
   if (!home) return;
-  if (aboard) {   // the men you carry are rescued
-    rescued += aboard;
-    score += 200 * aboard;
-    aboard = 0;
-    playSound(SND_DRIP);
-  }
   if (flagState == FLAG_CARRIED) {
     state = ST_WON;
     overT = 0;
@@ -1003,8 +1058,9 @@ static void drawHud() {
   for (int k = 0; k < tanksLeft - (tank.alive ? 1 : 0) && k < 9; k++)
     drawPic2x(A.tank.pic[0], camX + (440 + k * 56) / (float)S, camY + (FB_H - 95) / (float)S);
   if (aboard) {
-    snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d", aboard, TANK_ROOM);
-    drawVectorText(buf, 160, 615, 1.4f, rgb565(255, 230, 90), false);
+    snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d - STOP RIGHT OF THE FIRST-AID STATION", aboard, TANK_ROOM);
+    pxBlend(16, FB_H - 170, 900, FB_H - 128, 0, 0, 0, 0.45f);
+    drawVectorText(buf, 300, 615, 1.4f, rgb565(255, 230, 90), false);
   }
 }
 
