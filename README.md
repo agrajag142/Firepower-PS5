@@ -10,6 +10,11 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 021
+
+- Up to 5 helicopters at once, a new one every 30 to 50 seconds (as on the Amiga),
+  each circling at its own distance so they spread out round your tank
+
 ## Version 020
 
 - The original's panel on the right (from its one-player screen, scaled to the

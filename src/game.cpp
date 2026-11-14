@@ -6,6 +6,9 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 021: up to 5 helicopters at once, a new one every 30 to 50 seconds
+// (as seen on the Amiga).
+//
 // Version 020: the original's panel on the right (from its one-player screen,
 // scaled to the TV's height) with the score in its own digits, your men, your
 // tanks, the fuel, the radar and your armour; the battle view beside it.
@@ -99,7 +102,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V020";
+static const char *VERSION = "V021";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -147,8 +150,9 @@ static const float REFUEL_RATE = 25.0f;    // in your garage: fuel a second (of 
 static const int TANK_ROOM = 6;            // men your tank can carry
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
-static const float HELI_EVERY = 30.0f;     // then one every this many seconds (+ up to 15)
-static const int HELI_MAX = 2;             // at once
+static const float HELI_EVERY = 30.0f;     // then one every this many seconds (+ up to HELI_EVERY_MORE)
+static const float HELI_EVERY_MORE = 20.0f;
+static const int HELI_MAX = 5;             // at once
 static const float HELI_SPEED = 95.0f;
 static const float HELI_TURN = 1.3f;       // radians a second
 static const float HELI_CIRCLE = 150.0f;   // how far out it circles your tank
@@ -283,6 +287,7 @@ struct Heli {
   float x, y, heading, reload, sound;
   int hits;
   float side;               // which way it circles (+1 / -1)
+  float ring;               // how far out it circles (each its own, so they don't stack)
 };
 struct Shell {
   bool live = false;
@@ -748,6 +753,7 @@ static void spawnHeli() {
       h.sound = 0;
       h.hits = 0;
       h.side = rnd() < 0.5f ? 1 : -1;
+      h.ring = HELI_CIRCLE * (0.7f + 0.7f * rnd());
       h.live = true;
       return;
     }
@@ -771,20 +777,20 @@ static void updateHelis(float dt) {
   heliTimer -= dt;
   if (heliTimer <= 0 && tank.alive) {
     if (live < HELI_MAX) spawnHeli();
-    heliTimer = HELI_EVERY + rnd() * 15;
+    heliTimer = HELI_EVERY + rnd() * HELI_EVERY_MORE;
   }
   for (Heli &h : helis) {
     if (!h.live) continue;
     // where it heads: a point on a circle round your tank, ahead of it on its way round
     float dx = h.x - tank.x, dy = h.y - tank.y, dist = sqrtf(dx * dx + dy * dy) + 0.01f;
     float tx, ty;
-    if (dist > HELI_CIRCLE * 1.6f) {
+    if (dist > h.ring * 1.6f) {
       tx = tank.x;
       ty = tank.y;
     } else {
       float a = atan2f(dy, dx) + h.side * 0.7f;
-      tx = tank.x + cosf(a) * HELI_CIRCLE;
-      ty = tank.y + sinf(a) * HELI_CIRCLE;
+      tx = tank.x + cosf(a) * h.ring;
+      ty = tank.y + sinf(a) * h.ring;
     }
     float want = atan2f(tx - h.x, -(ty - h.y));
     float diff = wrapAngle(want - h.heading), turn = HELI_TURN * dt;
@@ -1371,11 +1377,15 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   }
   float hd = -1;
   int nm = 0;
+  int nh = 0;
   for (Heli &h : helis)
-    if (h.live) hd = sqrtf((h.x - tank.x) * (h.x - tank.x) + (h.y - tank.y) * (h.y - tank.y));
+    if (h.live) {
+      hd = sqrtf((h.x - tank.x) * (h.x - tank.x) + (h.y - tank.y) * (h.y - tank.y));
+      nh++;
+    }
   for (Missile &mm : missiles) nm += mm.live && mm.air;
-  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d fuel %.0f mines %d",
-           tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft, hd, nm,
+  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d helis %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d fuel %.0f mines %d",
+           tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft, nh, hd, nm,
            hqSquare / MAPN, hqSquare % MAPN, (int)flagState, (int)state, [] {
              int n = 0;
              for (Man &m : men) n += m.live;
