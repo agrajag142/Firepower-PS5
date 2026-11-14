@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 005
+
+- The enemy's turrets: every gun position (type 37) has its gun (the Turret
+  file's 8 headings) turning to your tank when it's within about four squares,
+  firing the original's missiles when it's lined up. Walls and buildings stop
+  the missiles. Three shells destroy a turret (250 points)
+- Your tank's armour (missiles take 12 of 100), three tanks: a lost tank blows
+  up and the next comes out of the garage; after the third, the final report
+
 ## Version 004
 
 - All of a tree is drawn over a tank under it (its black parts were see-through)
@@ -38,8 +47,8 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 - The original explosions and sounds (TankBlast, Boom2, Drip)
 - A mini map, and the full map (Options)
 
-Still to come (from the disassembly, in this order): the enemy's turrets and
-tanks, the men to rescue and run over, the helicopters, the flags and the win,
+Still to come (from the disassembly, in this order): the helicopters, the
+enemy's tanks, the men to rescue and run over, the flags and the win,
 the pick screen and its tanks, then two players split-screen.
 
 ## Controls
@@ -92,6 +101,8 @@ firepower/build.sh sim                     # plays sim/tour.txt, screenshots in 
 firepower/build.sh sim firepower/sim/shoot.txt   # shelling a building to rubble
 firepower/build.sh sim firepower/sim/gate.txt    # out of the garage and through the gate
 firepower/build.sh sim firepower/sim/trees.txt   # under the trees, up to their trunks
+firepower/build.sh sim firepower/sim/turret.txt  # a turret fires at the tank; the tank destroys it
+firepower/build.sh sim firepower/sim/gameover.txt   # all three tanks lost
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

@@ -1,0 +1,15 @@
+# Sitting in front of a turret until all three tanks are gone
+tap FIRE
+hold NONE 2
+place 2080 670 12
+hold NONE 1200
+shot lost1
+place 2080 670 12
+hold NONE 1200
+place 2080 670 12
+hold NONE 1200
+shot over
+hold NONE 70
+tap FIRE
+hold NONE 5
+shot backtotitle

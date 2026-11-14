@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 005: the enemy's turrets (the gun positions, type 37): they turn to
+// your tank when it's near and fire missiles (the Turret file's guns and
+// missiles). Your tank's armour, three tanks, losing one, game over.
+//
 // Version 004: all of a tree over the tank, its black too.
 //
 // Version 003: trees - the tank drives under their branches (the leaves drawn
@@ -31,7 +35,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V004";
+static const char *VERSION = "V005";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -48,7 +52,15 @@ static const float SHELL_RANGE = 300.0f;
 static const float RELOAD = 0.45f;
 static const int SHELL_DAMAGE = 5;         // a building (strength 15) takes three
 static const float GATE_CLOSE = 1.0f;
-static const float TRUNK = 0.3f;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
+static const float TRUNK = 0.3f;
+static const float TURRET_RANGE = 280.0f;  // how near your tank must be for a turret to wake (Amiga pixels)
+static const float TURRET_TURN = 1.6f;     // radians a second
+static const float TURRET_RELOAD = 2.6f;   // seconds between missiles (each turret varies a little)
+static const float MISSILE_SPEED = 150.0f;
+static const float MISSILE_RANGE = 360.0f;
+static const int MISSILE_DAMAGE = 12;      // of your tank's 100 armour
+static const int TANKS = 3;                // tanks you have
+static const float RESPAWN = 2.5f;         // seconds before the next tank comes out           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the sound
 // A few voices mixing the original's 8-bit samples up to 48 kHz. The game
@@ -143,6 +155,20 @@ struct Tank {
   float heading = 0;        // radians, 0 north, clockwise (the frames' order)
   float speed = 0;
   float reload = 0;
+  int armour = 100;
+  bool alive = true;
+  float down = 0;           // since it was destroyed
+};
+struct Turret {
+  int i;                    // its square
+  float heading;            // the gun, radians
+  float reload;
+};
+struct Missile {
+  bool live = false;
+  float x, y, dx, dy, left;
+  int frame;                // 0..7
+  int from;                 // the turret's square (it flies out over its own base)
 };
 struct Shell {
   bool live = false;
@@ -158,11 +184,21 @@ struct Boom {
 static Tank tank;
 static Shell shells[16];
 static Boom booms[32];
-static int score = 0, destroyed = 0;
+static int score = 0, destroyed = 0, tanksLeft = TANKS, tanksLost = 0;
+static Turret turrets[96];
+static int nTurrets = 0;
+static Missile missiles[48];
+static int startSquare = 0;
+static uint32_t rng = 1;
+static float rnd() {   // 0..1
+  rng = rng * 1664525u + 1013904223u;
+  return (rng >> 8) / 16777216.0f;
+}
 static float clockT = 0;
 
-enum State { ST_TITLE, ST_PLAY };
+enum State { ST_TITLE, ST_PLAY, ST_OVER };
 static State state = ST_TITLE;
+static float overT = 0;   // on the game over screen
 static bool mapOpen = false;
 static float titleT = 0;
 static char debugText[160];
@@ -243,6 +279,14 @@ static void startBattle(int m) {
   tank.y = (start % MAPN) * TILE + TILE / 2.0f;
   tank.heading = PI;   // facing out of the garage (its door is to the south)
   findGates();
+  startSquare = start;
+  tanksLeft = TANKS;
+  tanksLost = 0;
+  // the enemy's turrets: every gun position (type 37) on the battlefield
+  nTurrets = 0;
+  for (int i = 0; i < MAPN * MAPN && nTurrets < 96; i++)
+    if (field[i] == 37) turrets[nTurrets++] = { i, rnd() * TWO_PI, 1 + rnd() * TURRET_RELOAD };
+  for (Missile &mm : missiles) mm.live = false;
   for (Shell &s : shells) s.live = false;
   for (Boom &b : booms) b.live = false;
   score = destroyed = 0;
@@ -272,7 +316,7 @@ static void hitSquare(int tx, int ty, float hx, float hy) {
   addBoom(tx * TILE + TILE / 2.0f, ty * TILE + TILE / 2.0f, true);
   playSound(SND_BOOM2);
   destroyed++;
-  score += (t.side >> 4) == 2 ? 200 : 100;
+  score += field[i] == 38 ? 250 : (t.side >> 4) == 2 ? 200 : 100;   // (38: a turret's ruin)
 }
 
 // ============================================================ the tank
@@ -349,6 +393,105 @@ static void moveShells(float dt) {
   }
 }
 
+// ============================================================ the turrets
+// Where a turret's gun turns: the middle of the big round base in its square
+static const float GUN_X = 31, GUN_Y = 22;
+
+static void tankHit(int damage, float x, float y) {
+  if (!tank.alive) return;
+  tank.armour -= damage;
+  addBoom(x, y, false);
+  playSound(SND_BOOM2, 0.5f);
+  if (tank.armour <= 0) {
+    tank.armour = 0;
+    tank.alive = false;
+    tank.down = 0;
+    tank.speed = 0;
+    tanksLeft--;
+    tanksLost++;
+    addBoom(tank.x, tank.y, true);
+    addBoom(tank.x + 10, tank.y - 8, true);
+    playSound(SND_BOOM2);
+  }
+}
+
+static void fireMissile(float x, float y, float heading, int from) {
+  for (Missile &mm : missiles)
+    if (!mm.live) {
+      int f = roundi(heading / TWO_PI * 8) & 7;
+      float a = f * TWO_PI / 8;   // along the gun as drawn
+      mm = { true, x + sinf(a) * 12, y - cosf(a) * 12, sinf(a) * MISSILE_SPEED, -cosf(a) * MISSILE_SPEED,
+             MISSILE_RANGE / MISSILE_SPEED, f, from };
+      playSound(SND_TANKBLAST, 0.45f);
+      return;
+    }
+}
+
+static void updateTurrets(float dt) {
+  for (int k = 0; k < nTurrets; k++) {
+    Turret &t = turrets[k];
+    if (field[t.i] != 37) continue;   // destroyed
+    float gx = (t.i / MAPN) * TILE + GUN_X, gy = (t.i % MAPN) * TILE + GUN_Y;
+    float dx = tank.x - gx, dy = tank.y - gy;
+    t.reload -= dt;
+    if (!tank.alive || dx * dx + dy * dy > TURRET_RANGE * TURRET_RANGE) continue;
+    float want = atan2f(dx, -dy);
+    float diff = wrapAngle(want - t.heading), turn = TURRET_TURN * dt;
+    t.heading += diff > turn ? turn : (diff < -turn ? -turn : diff);
+    t.heading = wrapAngle(t.heading);
+    if (fabsf(wrapAngle(want - t.heading)) < 0.3f && t.reload <= 0) {
+      fireMissile(gx, gy, t.heading, t.i);
+      t.reload = TURRET_RELOAD * (0.7f + 0.6f * rnd());
+    }
+  }
+}
+
+static void moveMissiles(float dt) {
+  for (Missile &mm : missiles) {
+    if (!mm.live) continue;
+    for (int k = 0; k < 3 && mm.live; k++) {
+      mm.x += mm.dx * dt / 3;
+      mm.y += mm.dy * dt / 3;
+      float dx = mm.x - tank.x, dy = mm.y - tank.y;
+      if (tank.alive && dx * dx + dy * dy < 12 * 12) {
+        tankHit(MISSILE_DAMAGE, mm.x, mm.y);
+        mm.live = false;
+      } else if (solidAt(mm.x, mm.y) && sq((int)floorf(mm.x / TILE), (int)floorf(mm.y / TILE)) != mm.from) {
+        // the enemy's missiles wear down what they hit, as your shells do
+        int tx = (int)floorf(mm.x / TILE), ty = (int)floorf(mm.y / TILE);
+        if (tx >= 0 && ty >= 0 && tx < MAPN && ty < MAPN && field[sq(tx, ty)] != 37) {
+          addBoom(mm.x, mm.y, false);
+        }
+        mm.live = false;
+      }
+    }
+    mm.left -= dt;
+    if (mm.live && mm.left <= 0) {
+      mm.live = false;
+      addBoom(mm.x, mm.y, false);
+    }
+  }
+}
+
+// After a tank is lost: the next comes out of the garage, or it's over
+static void updateRespawn(float dt) {
+  if (tank.alive) return;
+  tank.down += dt;
+  if (tank.down < RESPAWN) return;
+  if (tanksLeft <= 0) {
+    state = ST_OVER;
+    overT = 0;
+    return;
+  }
+  tank.x = (startSquare / MAPN) * TILE + TILE / 2.0f;
+  tank.y = (startSquare % MAPN) * TILE + TILE / 2.0f;
+  tank.heading = PI;
+  tank.speed = 0;
+  tank.armour = 100;
+  tank.alive = true;
+  tank.reload = 0.5f;
+}
+
 // ============================================================ drawing
 static float camX = 0, camY = 0;   // the view's top left, Amiga pixels
 
@@ -374,6 +517,14 @@ static void drawPic2x(const Pic &p, float wx, float wy) {
       }
     }
   }
+}
+
+// A turret's gun at its base: the frame's round end sits on the pivot
+static void drawGun(float px, float py, float heading) {
+  int f = roundi(heading / TWO_PI * 8) & 7;
+  const Pic &g = A.turret.pic[f];
+  float a = f * TWO_PI / 8, len = (g.w > g.h ? g.w : g.h) * 0.5f - 4;
+  drawPic2x(g, px + sinf(a) * len, py - cosf(a) * len);
 }
 
 static void drawField() {
@@ -451,6 +602,31 @@ static void drawHud() {
   drawVectorText(VERSION, 1250, 708, 1.2f, dim, false);
   snprintf(buf, sizeof(buf), "DESTROYED %d", destroyed);
   drawVectorText(buf, 90, 708, 1.4f, dim, false);
+  // armour and the tanks left, bottom left
+  pxBlend(16, FB_H - 120, 420, FB_H - 70, 0, 0, 0, 0.5f);
+  drawVectorText("ARMOUR", 70, 650, 1.4f, ink, false);
+  int bx0 = 170, by0 = FB_H - 108, bw = 230, bh = 26;
+  pxRect(bx0 - 2, by0 - 2, bx0 + bw + 1, by0 + bh + 1, rgba(60, 50, 40));
+  int fillW = bw * tank.armour / 100;
+  uint32_t col = tank.armour > 50 ? rgba(90, 200, 60) : tank.armour > 25 ? rgba(240, 200, 40) : rgba(230, 60, 40);
+  if (fillW > 0) pxRect(bx0, by0, bx0 + fillW - 1, by0 + bh - 1, col);
+  for (int k = 0; k < tanksLeft - (tank.alive ? 1 : 0) && k < 9; k++)
+    drawPic2x(A.tank.pic[0], camX + (440 + k * 56) / (float)S, camY + (FB_H - 95) / (float)S);
+}
+
+static void drawOver(float dt) {
+  overT += dt;
+  pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
+  drawVectorText("YOUR TANKS ARE ALL GONE", 640, 220, 3.6f, rgb565(230, 80, 50), true);
+  drawVectorText("***** FINAL REPORT *****", 640, 320, 2.2f, rgb565(255, 210, 120), true);
+  char buf[64];
+  snprintf(buf, sizeof(buf), "SCORE %d", score);
+  drawVectorText(buf, 640, 390, 2.2f, rgb565(255, 255, 255), true);
+  snprintf(buf, sizeof(buf), "INFLICTED: %d DESTROYED", destroyed);
+  drawVectorText(buf, 640, 440, 1.8f, rgb565(220, 220, 220), false);
+  snprintf(buf, sizeof(buf), "CASUALTIES: TANKS %d", tanksLost);
+  drawVectorText(buf, 640, 480, 1.8f, rgb565(220, 220, 220), false);
+  if (overT > 1.0f && fmodf(overT, 1.0f) < 0.7f) drawVectorText("PRESS X", 640, 600, 2.4f, rgb565(255, 220, 120), true);
 }
 
 static void drawTitle(float dt) {
@@ -510,7 +686,7 @@ static void drawRoofs() {
 
 // ============================================================ the frame
 void gameInit(uint32_t seed, const char *dir) {
-  (void)seed;
+  rng = seed | 1;
   gfxInit();
   assetsLoad(dir);
   state = ST_TITLE;
@@ -526,6 +702,14 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
       return;
     }
   }
+  if (state == ST_OVER) {
+    drawOver(dt);
+    if (overT > 1.0f && (pressed & BTN_FIRE)) {
+      state = ST_TITLE;
+      titleT = 0;
+    }
+    return;
+  }
   clockT += dt;
   if (pressed & BTN_MAP) mapOpen = !mapOpen;
   if (mapOpen && (pressed & BTN_BACK)) {
@@ -535,14 +719,17 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     return;
   }
   if (!mapOpen) {
-    moveTank(dt, held, sx, sy);
+    if (tank.alive) moveTank(dt, held, sx, sy);
     tank.reload -= dt;
-    if ((held & BTN_FIRE) && tank.reload <= 0) {
+    if (tank.alive && (held & BTN_FIRE) && tank.reload <= 0) {
       fire();
       tank.reload = RELOAD;
     }
     moveShells(dt);
     updateGates(dt);
+    updateTurrets(dt);
+    moveMissiles(dt);
+    updateRespawn(dt);
   }
 
   // the view follows the tank
@@ -554,9 +741,14 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   camY = roundf(camY);
 
   drawField();
+  for (int k = 0; k < nTurrets; k++)
+    if (field[turrets[k].i] == 37)
+      drawGun((turrets[k].i / MAPN) * TILE + GUN_X, (turrets[k].i % MAPN) * TILE + GUN_Y, turrets[k].heading);
   for (Shell &s : shells)
     if (s.live) drawPic2x(A.shell.pic[s.frame], s.x, s.y);
-  drawPic2x(A.tank.pic[frameOf(tank.heading)], tank.x, tank.y);
+  for (Missile &mm : missiles)
+    if (mm.live) drawPic2x(A.turret.pic[8 + mm.frame], mm.x, mm.y);
+  if (tank.alive) drawPic2x(A.tank.pic[frameOf(tank.heading)], tank.x, tank.y);
   drawRoofs();
   drawBooms(mapOpen ? 0 : dt);
   drawHud();
@@ -567,7 +759,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   } else {
     drawMap(FB_W - MAPN * 3 - 24, FB_H - MAPN * 3 - 24, 3, 0.5f);
   }
-  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d", tank.x, tank.y, frameOf(tank.heading), tank.speed, score);
+  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d", tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft);
 }
 
 const char *gameDebug() { return debugText; }
