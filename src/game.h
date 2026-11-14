@@ -10,7 +10,7 @@ enum : uint32_t {
   BTN_LEFT = 0x01, BTN_RIGHT = 0x02, BTN_UP = 0x04, BTN_DOWN = 0x08,   // D-pad: turn, forward, reverse
   BTN_FIRE = 0x10,    // Cross / R2 / R1: fire
   BTN_MAP = 0x20,     // Options / touchpad: the settings menu
-  BTN_NEXT = 0x40,    // Triangle: the next battlefield (title screen)
+  BTN_NEXT = 0x40,    // Triangle: (unused)
   BTN_BACK = 0x80,    // Circle: out of the settings menu
   BTN_REVERSE = 0x100,   // Square: reverse (straight back)
 };
@@ -33,6 +33,7 @@ void gameDebugTank(float *x, float *y, float *heading);
 void gameDebugPlace(float x, float y, float heading);   // (the PC test build: put the tank somewhere)
 void gameDebugMan(float x, float y, int side);           // (the PC test build: a man there, 0 yours 1 the enemy's)
 void gameDebugFuel(float f);                             // (the PC test build: set the fuel, 0..100)
-void gameDebugGod(bool on);                             // (the PC test build: the tank can't be hurt)
+void gameDebugGod(bool on);
+void gameDebugBattlefield(int m);                       // (the PC test build: the battlefield X starts, 0..10; -1 as the settings say)                             // (the PC test build: the tank can't be hurt)
 
 #endif // GAME_H

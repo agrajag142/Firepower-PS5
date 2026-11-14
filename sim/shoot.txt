@@ -1,5 +1,5 @@
 # Shelling a building until it goes: below the garages, facing north
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 place 1376 830 0

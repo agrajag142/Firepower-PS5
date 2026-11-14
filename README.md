@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 028
+
+- RANDOM BATTLEFIELD in the settings (on to start; only there with CLASSIC
+  off): on, X on the title starts one of the five one-player battlefields at
+  random, as the original; off, X shows all 11 of the disk's battlefields (and
+  AT RANDOM) to choose from. With CLASSIC on it's always at random
+- Triangle no longer chooses the battlefield on the title screen
+- The settings menu's text smaller, to make room for more
+
 ## Version 027
 
 - SHOW FLAG in the settings menu (off to start, kept for next time): the enemy
@@ -225,7 +234,6 @@ the pick screen and its tanks, then two players split-screen.
 | Square | reverse (straight back) |
 | Cross, R1 or R2 | fire |
 | Options or the touchpad | the settings menu (Circle or Options again: back) |
-| Triangle (title screen) | choose a battlefield (or back to any of the five, at random) |
 
 ## You need your Firepower disk
 
@@ -278,11 +286,12 @@ firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, 
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
 firepower/build.sh sim firepower/sim/full.txt    # the tank full: the other men wait clear of it
 firepower/build.sh sim firepower/sim/showflag.txt   # SHOW FLAG: the flag on the radar
+firepower/build.sh sim firepower/sim/pick.txt    # RANDOM BATTLEFIELD off: choosing the battlefield
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```
 
-(The scripts press Triangle first, so they play battlefield 1-1.) It runs the same game code with a scripted controller (see `sim/sim_main.cpp`
+(The scripts start with `battlefield 0`, so they play battlefield 1-1.) It runs the same game code with a scripted controller (see `sim/sim_main.cpp`
 for the commands), so a change can be checked on the PC before it goes on the
 console.
 

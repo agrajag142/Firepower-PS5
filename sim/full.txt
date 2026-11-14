@@ -1,5 +1,5 @@
 # The tank full (6 aboard): your other men wait clear of it, not crowding round it
-tap NEXT
+battlefield 0
 shot title_new
 tap FIRE
 hold NONE 2

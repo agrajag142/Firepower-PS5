@@ -1,5 +1,5 @@
 # SHOW FLAG in the settings: the enemy flag (in its headquarters) blinks red on the radar
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 30
 tap MAP

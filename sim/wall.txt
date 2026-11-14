@@ -1,5 +1,5 @@
 # Shooting a plain wall open (battlefield 1: the wall above the garages, from outside the compound)
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 place 1376 590 8

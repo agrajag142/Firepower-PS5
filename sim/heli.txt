@@ -1,6 +1,6 @@
 # A helicopter comes in (after 25 s), circles the tank and fires; the tank (in the open, below
 # the compound) turns and fires back
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 place 1248 1120 0

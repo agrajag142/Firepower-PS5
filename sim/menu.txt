@@ -4,7 +4,7 @@ shot title_plain
 tap MAP
 shot title_menu
 tap MAP
-tap NEXT
+battlefield 0
 hold FIRE 30
 shot start_no_shot
 hold NONE 2

@@ -1,0 +1,19 @@
+# RANDOM BATTLEFIELD off: X on the title shows the battlefields; choose 2-3
+tap MAP
+tap DOWN
+tap DOWN
+tap DOWN
+tap DOWN
+tap FIRE
+shot pick_menu
+tap MAP
+shot pick_title
+tap FIRE
+shot pick_screen
+tap DOWN
+tap RIGHT
+tap RIGHT
+shot pick_chosen
+tap FIRE
+hold NONE 2
+shot pick_battle

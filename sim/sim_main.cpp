@@ -10,6 +10,7 @@
 //                wav SECONDS NAME      the sound for the next SECONDS: out/NAME.wav
 //                man X Y SIDE          a man at X,Y (0 yours, 1 the enemy's)
 //                fuel N                the tank's fuel (0..100)
+//                battlefield N         X on the title starts battlefield N (0..10; -1: as the settings say)
 //                god on|off            the tank can't be hurt (to test what's past the turrets)
 //                seed N                (before anything else)
 //                # comment
@@ -131,6 +132,8 @@ int main(int argc, char **argv) {
       gameDebugMan(x, y, side);
     } else if (!strcmp(cmd, "fuel")) {     // fuel N: the tank's fuel (0..100)
       gameDebugFuel((float)atof(a));
+    } else if (!strcmp(cmd, "battlefield")) {   // battlefield N: X on the title starts that one (-1: as the settings say)
+      gameDebugBattlefield(atoi(a));
     } else if (!strcmp(cmd, "god")) {      // god on|off: the tank can't be hurt
       gameDebugGod(!strcmp(a, "on"));
     } else if (!strcmp(cmd, "shot")) {

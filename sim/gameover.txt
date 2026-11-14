@@ -1,5 +1,5 @@
 # Sitting in front of a turret until all three tanks are gone
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 place 2080 670 12

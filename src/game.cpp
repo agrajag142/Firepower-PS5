@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V027";
+static const char *VERSION = "V028";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -190,7 +190,8 @@ static bool tuneReady[TUNES] = { false, false };
 static float tuneGain[TUNES] = { 0, 0 };            // (the sound thread's)
 static std::atomic<bool> musicOn{true};
 static bool showFlag = false;  // SHOW FLAG in the settings: where the enemy flag is, on the radar
-static bool classic = false;   // CLASSIC in the settings: the original game as it was (on) or with the new features (off)
+static bool classic = false;
+static bool randomField = true;   // RANDOM BATTLEFIELD in the settings (CLASSIC off): off, X on the title shows the battlefields to choose from   // CLASSIC in the settings: the original game as it was (on) or with the new features (off)
 static std::atomic<int> musicVol{MUSIC_VOLUME_DEFAULT}, sfxVol{SFX_VOLUME_DEFAULT};   // percent
 static std::atomic<int> tuneWanted{0};              // 0 the title's, 1 the battle's
 static std::atomic<bool> tuneFromStart[TUNES];      // (start it again from the top as it comes in)
@@ -292,7 +293,8 @@ void gameAudio(short *out, int frames) {
 static uint8_t field[MAPN * MAPN];   // the squares now (x * 64 + y, as the disk has them)
 static int strength[MAPN * MAPN];    // what's left of each square
 static int mapNo = 0;                // 0..10: mapp1/t1..t5, mapp2/t1..t5, mapp3/t1
-static int mapChoice = -1;           // the title screen's: -1 at random (of the one-player five), else that one
+static int pickSel = 0;              // the battlefield picked on the choosing screen (0..10, 11: at random)
+static int forcedField = -1;         // (the PC test build: the battlefield the next battle uses)
 
 static inline int sq(int tx, int ty) { return tx * MAPN + ty; }
 static inline const TileType &typeAt(int tx, int ty) { return A.types[field[sq(tx, ty)]]; }
@@ -415,7 +417,7 @@ static float rnd() {   // 0..1
 }
 static float clockT = 0;
 
-enum State { ST_TITLE, ST_PLAY, ST_OVER, ST_WON };
+enum State { ST_TITLE, ST_PICK, ST_PLAY, ST_OVER, ST_WON };
 static State state = ST_TITLE;
 static float overT = 0;   // on the game over screen
 static bool menuOpen = false;    // the settings menu (Options): the battle waits
@@ -1334,13 +1336,8 @@ static void drawTitle(float dt) {
   }
   }
   if (fmodf(titleT, 1.0f) < 0.7f) drawVectorText("PRESS X TO START", 640, 655, 2.6f, rgb565(255, 220, 120), true);
-  char buf[64];
-  if (mapChoice < 0)
-    snprintf(buf, sizeof(buf), "BATTLEFIELD: ANY OF THE FIVE (TRIANGLE TO CHOOSE)");
-  else
-    snprintf(buf, sizeof(buf), "BATTLEFIELD %d-%d (TRIANGLE TO CHANGE)", mapChoice < 5 ? 1 : mapChoice < 10 ? 2 : 3,
-             mapChoice < 10 ? mapChoice % 5 + 1 : 1);
-  drawVectorText(buf, 640, 692, 1.5f, rgb565(170, 170, 170), false);
+  drawVectorText(classic || randomField ? "BATTLEFIELD: AT RANDOM" : "BATTLEFIELD: YOUR CHOICE", 640, 692, 1.5f,
+                 rgb565(170, 170, 170), false);
   drawVectorText("OPTIONS: SETTINGS", 80, 708, 1.2f, rgb565(110, 110, 110), false);
   drawVectorText(VERSION, 1250, 708, 1.2f, rgb565(110, 110, 110), false);
 }
@@ -1382,7 +1379,7 @@ static void drawRoofs() {
 #define FP_DATA_DIR "/download0/firepower"   // (the title's own storage: the rest of /data can't be written)
 #define FP_SETTINGS_FILE FP_DATA_DIR "/settings.bin"
 #endif
-enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
+enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RANDOM, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
 static int menuSel = 0;
 static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
 static bool quitAsked = false;      // the platform closes the app
@@ -1394,13 +1391,14 @@ static void loadSettings() {
   if (!path) return;
   FILE *f = fopen(path, "rb");
   if (!f) return;
-  uint8_t b[5] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0 };
-  if (fread(b, 1, 5, f) >= 3) {
+  uint8_t b[6] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0, 1 };
+  if (fread(b, 1, 6, f) >= 3) {
     musicOn.store(b[0] != 0);
     musicVol.store(b[1] > 100 ? 100 : b[1]);
     sfxVol.store(b[2] > 100 ? 100 : b[2]);
     classic = b[3] != 0;
     showFlag = b[4] != 0;
+    randomField = b[5] != 0;
   }
   fclose(f);
 }
@@ -1412,12 +1410,17 @@ static void saveSettings() {
 #endif
   FILE *f = fopen(path, "wb");
   if (!f) return;
-  uint8_t b[5] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag };
-  fwrite(b, 1, 5, f);
+  uint8_t b[6] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag,
+                   (uint8_t)randomField };
+  fwrite(b, 1, 6, f);
   fclose(f);
 }
 
-static bool menuItemShown(int i) { return i != MI_TITLE || state == ST_PLAY; }   // (no battle to leave on the title)
+static bool menuItemShown(int i) {
+  if (i == MI_TITLE) return state == ST_PLAY;   // (no battle to leave on the title)
+  if (i == MI_RANDOM) return !classic;          // (classic: always at random)
+  return true;
+}
 
 static void openMenu() {
   menuOpen = true;
@@ -1458,6 +1461,8 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
     musicOn.store(!musicOn.load());
   } else if (menuSel == MI_CLASSIC && (go || side)) {
     classic = !classic;
+  } else if (menuSel == MI_RANDOM && (go || side)) {
+    randomField = !randomField;
   } else if (menuSel == MI_SHOWFLAG && (go || side)) {
     showFlag = !showFlag;
   } else if ((menuSel == MI_MUSIC_VOL || menuSel == MI_SFX_VOL) && side) {
@@ -1484,47 +1489,123 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
 static void drawMenu() {
   float cx = state == ST_PLAY ? PLAY_CX : 640;
   blendRect(0, 0, (int)(cx * 2), SCREEN_H - 1, 0, 0, 0, 0.55f);
-  int x0 = (int)cx - 300, x1 = (int)cx + 300, y0 = 70, y1 = y0 + 580;
+  const int ROW = 38;
+  const float TS = 1.8f;   // the rows' text
+  int rows = 0;
+  for (int i = 0; i < MI_COUNT; i++) rows += menuItemShown(i);
+  int x0 = (int)cx - 260, x1 = (int)cx + 260, y1h = 105 + rows * ROW + 40;
+  int y0 = (SCREEN_H - y1h) / 2, y1 = y0 + y1h;
   fillRect(x0, y0, x1, y1, rgb565(40, 34, 24));
   drawRectOutline(x0, y0, x1, y1, rgb565(200, 140, 60), 3);
-  drawVectorText("SETTINGS", cx, y0 + 40, 3.6f, rgb565(230, 160, 70), true);
-  if (state == ST_PLAY) drawVectorText("THE BATTLE WAITS", cx, y0 + 76, 1.6f, rgb565(200, 190, 160), false);
+  drawVectorText("SETTINGS", cx, y0 + 34, 2.8f, rgb565(230, 160, 70), true);
+  if (state == ST_PLAY) drawVectorText("THE BATTLE WAITS", cx, y0 + 64, 1.3f, rgb565(200, 190, 160), false);
   int row = 0;
   for (int i = 0; i < MI_COUNT; i++) {
     if (!menuItemShown(i)) continue;
-    int y = y0 + 125 + row++ * 50;
+    int y = y0 + 105 + row++ * ROW;
     bool sel = i == menuSel;
-    if (sel) fillRect(x0 + 20, y - 22, x1 - 20, y + 22, rgb565(90, 66, 30));
+    if (sel) fillRect(x0 + 16, y - ROW / 2 + 2, x1 - 16, y + ROW / 2 - 2, rgb565(90, 66, 30));
     uint16_t c = sel ? rgb565(255, 225, 120) : rgb565(225, 220, 205);
-    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
+    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_RANDOM ? "RANDOM BATTLEFIELD" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
                         i == MI_RESUME ? "RESUME" :
                         i == MI_TITLE ? (quitArmed == i ? "X AGAIN TO QUIT TO TITLE" : "QUIT TO TITLE") :
                                         (quitArmed == i ? "X AGAIN TO QUIT THE GAME" : "QUIT GAME");
     if (i <= MI_SHOWFLAG) {
-      drawVectorText(label, x0 + 44 + vectorTextWidth(label, 2.4f) / 2, y, 2.4f, c, true);
-      if (i == MI_MUSIC || i == MI_CLASSIC || i == MI_SHOWFLAG) {
-        bool on = i == MI_MUSIC ? musicOn.load() : i == MI_CLASSIC ? classic : showFlag;
+      drawVectorText(label, x0 + 36 + vectorTextWidth(label, TS) / 2, y, TS, c, true);
+      if (i != MI_MUSIC_VOL && i != MI_SFX_VOL) {
+        bool on = i == MI_MUSIC ? musicOn.load() : i == MI_CLASSIC ? classic : i == MI_RANDOM ? randomField : showFlag;
         const char *v = on ? "ON" : "OFF";
-        drawVectorText(v, x1 - 50 - vectorTextWidth(v, 2.4f) / 2, y, 2.4f, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
+        drawVectorText(v, x1 - 40 - vectorTextWidth(v, TS) / 2, y, TS, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
       } else {   // a bar of 20 steps and the number
         int v = (i == MI_MUSIC_VOL ? musicVol : sfxVol).load();
         bool dim = i == MI_MUSIC_VOL && !musicOn.load();
-        int bx0 = x1 - 250, bx1 = x1 - 110;
-        fillRect(bx0, y - 8, bx1, y + 8, rgb565(20, 16, 10));
-        if (v > 0) fillRect(bx0, y - 8, bx0 + (bx1 - bx0) * v / 100, y + 8, dim ? rgb565(110, 100, 80) : rgb565(230, 160, 70));
+        int bx0 = x1 - 210, bx1 = x1 - 90;
+        fillRect(bx0, y - 6, bx1, y + 6, rgb565(20, 16, 10));
+        if (v > 0) fillRect(bx0, y - 6, bx0 + (bx1 - bx0) * v / 100, y + 6, dim ? rgb565(110, 100, 80) : rgb565(230, 160, 70));
         char num[8];
         snprintf(num, sizeof(num), "%d", v);
-        drawVectorText(num, x1 - 60, y, 2.0f, c, false);
+        drawVectorText(num, x1 - 48, y, 1.6f, c, false);
       }
     } else {
-      drawVectorText(label, cx, y, 2.4f, quitArmed == i ? rgb565(255, 90, 60) : c, true);
+      drawVectorText(label, cx, y, TS, quitArmed == i ? rgb565(255, 90, 60) : c, true);
     }
   }
-  drawVectorText("UP / DOWN: CHOOSE   LEFT / RIGHT: CHANGE   X: SELECT   CIRCLE: BACK", cx, y1 - 26, 1.2f,
+  drawVectorText("UP / DOWN: CHOOSE   LEFT / RIGHT: CHANGE   X: SELECT   CIRCLE: BACK", cx, y1 - 22, 1.1f,
                  rgb565(180, 170, 150), false);
 }
 
 bool gameQuitRequested() { return quitAsked; }
+
+// ============================================================ choosing the battlefield
+// (RANDOM BATTLEFIELD off): all 11 of the disk's battlefields, and AT RANDOM
+#define PICK_COLS 4
+#define PICK_CELL 4          // pixels a square in the pictures (64 squares: 256 across)
+#define PICK_PITCH_X 320
+#define PICK_PITCH_Y 310
+
+static int randomField5() { return (int)(rnd() * 5) % 5; }   // one of the five one-player battlefields, as the original
+
+static void fieldName(int m, char *buf, int n) {
+  snprintf(buf, n, "BATTLEFIELD %d-%d", m < 5 ? 1 : m < 10 ? 2 : 3, m < 10 ? m % 5 + 1 : 1);
+}
+
+static void updatePick(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
+  if (pressed & BTN_BACK) { state = ST_TITLE; titleT = 0; return; }
+  uint32_t dirs = held & (BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN);
+  if (sx < -0.5f) dirs |= BTN_LEFT;
+  if (sx > 0.5f) dirs |= BTN_RIGHT;
+  if (sy < -0.5f) dirs |= BTN_UP;
+  if (sy > 0.5f) dirs |= BTN_DOWN;
+  uint32_t step = dirs & ~menuPrevDirs;
+  if (step) menuRepeatT = 0.4f;
+  else if (dirs) {
+    menuRepeatT -= dt;
+    if (menuRepeatT <= 0) { step = dirs; menuRepeatT = 0.12f; }
+  }
+  menuPrevDirs = dirs;
+  int col = pickSel % PICK_COLS, row = pickSel / PICK_COLS;
+  if (step & BTN_LEFT) col = (col + PICK_COLS - 1) % PICK_COLS;
+  if (step & BTN_RIGHT) col = (col + 1) % PICK_COLS;
+  if (step & BTN_UP) row = (row + 2) % 3;
+  if (step & BTN_DOWN) row = (row + 1) % 3;
+  pickSel = row * PICK_COLS + col;
+  if (pressed & BTN_FIRE) startBattle(pickSel == 11 ? randomField5() : pickSel);
+}
+
+static void drawPick() {
+  pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
+  drawVectorText("CHOOSE YOUR BATTLEFIELD", 640, 34, 2.6f, rgb565(230, 160, 70), true);
+  int gx = (FB_W - (PICK_COLS - 1) * PICK_PITCH_X - 64 * PICK_CELL) / 2, gy = 90;
+  for (int k = 0; k < 12; k++) {
+    int x0 = gx + (k % PICK_COLS) * PICK_PITCH_X, y0 = gy + (k / PICK_COLS) * PICK_PITCH_Y, w = 64 * PICK_CELL;
+    bool sel = k == pickSel;
+    pxRect(x0 - 8, y0 - 8, x0 + w + 7, y0 + w + 7, sel ? rgba(255, 210, 90) : rgba(70, 60, 45));
+    pxRect(x0 - 3, y0 - 3, x0 + w + 2, y0 + w + 2, rgba(0, 0, 0));
+    if (k < 11) {
+      const uint8_t *m = A.maps[k];
+      for (int tx = 0; tx < MAPN; tx++)
+        for (int ty = 0; ty < MAPN; ty++) {
+          const TileType &t = A.types[m[tx * MAPN + ty] < 93 ? m[tx * MAPN + ty] : 0];
+          uint32_t c = t.enemy ? A.tileAvgEnemy[t.pic] : A.tileAvg[t.pic];
+          if (t.block & 0x78) c = t.destructible && t.strength >= 15 ? rgba(150, 80, 30) : rgba(40, 40, 46);
+          if (t.flagsA & 0x08) c = rgba(80, 160, 255);   // your base
+          pxRect(x0 + tx * PICK_CELL, y0 + ty * PICK_CELL, x0 + tx * PICK_CELL + PICK_CELL - 1, y0 + ty * PICK_CELL + PICK_CELL - 1, c);
+        }
+      if (!sel) pxBlend(x0, y0, x0 + w - 1, y0 + w - 1, 0, 0, 0, 0.35f);
+    } else {
+      pxRect(x0, y0, x0 + w - 1, y0 + w - 1, sel ? rgba(60, 45, 20) : rgba(25, 20, 12));
+    }
+    char name[32];
+    if (k < 11) fieldName(k, name, sizeof(name));
+    else snprintf(name, sizeof(name), "AT RANDOM");
+    float ux = (x0 + w / 2.0f) / UNIT_K, uy = (y0 + w + 26) / UNIT_K;
+    drawVectorText(name, ux, uy, 1.5f, sel ? rgb565(255, 225, 120) : rgb565(190, 185, 170), sel);
+    if (k == 11) drawVectorText("?", ux, (y0 + w / 2.0f) / UNIT_K, 6.0f, sel ? rgb565(255, 210, 90) : rgb565(120, 100, 70), true);
+  }
+  drawVectorText("D-PAD OR STICK: CHOOSE    X: TO BATTLE    CIRCLE: BACK", 640, 706, 1.3f, rgb565(170, 165, 150), false);
+}
+
+void gameDebugBattlefield(int m) { forcedField = m; }
 
 // ============================================================ the frame
 void gameInit(uint32_t seed, const char *dir) {
@@ -1555,10 +1636,25 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     if (state != ST_PLAY) menuOpen = false;
   }
   if (state == ST_TITLE) {
-    if (A.ok && (pressed & BTN_NEXT)) mapChoice = mapChoice >= 10 ? -1 : mapChoice + 1;
-    if (A.ok && (pressed & BTN_FIRE)) startBattle(mapChoice >= 0 ? mapChoice : (int)(rnd() * 5) % 5);
-    else {
+    if (A.ok && (pressed & BTN_FIRE)) {
+      if (forcedField >= 0) startBattle(forcedField);
+      else if (classic || randomField) startBattle(randomField5());
+      else {   // the battlefields, to choose from
+        state = ST_PICK;
+        menuPrevDirs = BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN;
+        drawPick();
+        return;
+      }
+    } else {
       drawTitle(dt);
+      return;
+    }
+  }
+  if (state == ST_PICK) {
+    updatePick(dt, held, pressed, sx, sy);
+    if (state != ST_PLAY) {
+      if (state == ST_PICK) drawPick();
+      else drawTitle(dt);
       return;
     }
   }

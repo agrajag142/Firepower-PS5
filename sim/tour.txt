@@ -1,6 +1,6 @@
 # The first look: the title, a battlefield, driving, shooting, the map
 shot title
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 shot start

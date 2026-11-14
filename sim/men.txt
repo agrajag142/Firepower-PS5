@@ -3,7 +3,7 @@
 # cross, square 20,12), they get out and run in: rescued. Then the
 # enemy's: a turret bunker by the HQ lets out 2 green men, run over
 god on
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 place 1376 830 0

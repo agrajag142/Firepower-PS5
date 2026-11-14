@@ -1,6 +1,6 @@
 # A building's ruin (battlefield 1: the garage row's first building, square 21,11, shelled from
 # below): the tank drives right over it, and nothing of the ruin is drawn over the tank
-tap NEXT
+battlefield 0
 tap FIRE
 hold NONE 2
 god on
