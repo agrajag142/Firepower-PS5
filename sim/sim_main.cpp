@@ -59,8 +59,18 @@ static void shot(const char *dir, const char *name) {
 
 int main(int argc, char **argv) {
   if (argc < 4) {
-    fprintf(stderr, "usage: sim script.txt outdir assetsdir/\n");
+    fprintf(stderr, "usage: sim script.txt outdir assetsdir/ [title.mod [game.mod]]\n");
     return 2;
+  }
+  for (int k = 0; k < 2 && argc > 4 + k; k++) {   // the tunes, as the PS5 build loads them
+    FILE *mf = fopen(argv[4 + k], "rb");
+    if (!mf) continue;
+    fseek(mf, 0, SEEK_END);
+    long len = ftell(mf);
+    fseek(mf, 0, SEEK_SET);
+    signed char *data = (signed char *)malloc(len);
+    if (data && fread(data, 1, len, mf) == (size_t)len) gameSetTune(k, data, len);
+    fclose(mf);
   }
   FILE *sf = fopen(argv[1], "r");
   if (!sf) return 2;

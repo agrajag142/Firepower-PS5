@@ -5,3 +5,5 @@ build/
 # the original game's files: from your own disk (tools/extract_assets.py), never in git
 assets/fp/
 *.adf
+# the music: yours, copied in (assets/title.mod, assets/game.mod)
+*.mod

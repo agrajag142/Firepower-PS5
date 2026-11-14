@@ -21,6 +21,9 @@ void gameInit(uint32_t seed, const char *dir);
 // sx/sy = the left stick (-1..1, up is -1).
 // Draws the whole picture into g_frame (gfx.h).
 void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy);
+// The music: the platform hands over each tune's bytes once (they must stay put):
+// 0 title.mod (the title and end screens), 1 game.mod (the battle). Either may be missing.
+void gameSetTune(int which, signed char *data, long len);
 // Stereo 16-bit samples at 48 kHz, from the platform's sound thread
 void gameAudio(short *out, int frames);
 const char *gameDebug();                          // (the PC test build: where the tank is)

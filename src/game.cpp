@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 022: music, as our other PS5 games: title.mod on the title and end
+// screens, game.mod in the battle (in the app's assets; without them, silence).
+// The goal reads CAPTURE THE ENEMY FLAG.
+//
 // Version 021: up to 5 helicopters at once, a new one every 30 to 50 seconds
 // (as seen on the Amiga).
 //
@@ -95,6 +99,7 @@
 #include "game.h"
 #include "assets.h"
 #include "gfx.h"
+#include "micromod.h"
 
 #include <atomic>
 #include <math.h>
@@ -102,7 +107,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V021";
+static const char *VERSION = "V022";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -161,6 +166,37 @@ static const int HELI_HITS = 2;            // shells to bring one down
 static const float HELI_MISSILE_SPEED = 190.0f;
 static const int HELI_MISSILE_DAMAGE = 10;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
+// ============================================================ the music
+#define TITLE_MUSIC_VOLUME 0.45f   // title.mod: 0.0 = off ... 1.0 = full
+#define GAME_MUSIC_VOLUME  0.25f   // game.mod, under the battle's sounds
+#define MUSIC_FADE_SECONDS 0.8f    // the two cross over
+extern "C" {   // (micromod2.c: a second copy of the MOD player, so each tune keeps its place)
+long micromod2_calculate_mod_file_len(signed char *module_header);
+long micromod2_initialise(signed char *data, long sampling_rate);
+void micromod2_set_gain(long value);
+void micromod2_set_position(long pos);
+void micromod2_get_audio(short *output_buffer, long count);
+}
+#define TUNES 2
+static bool tuneReady[TUNES] = { false, false };
+static float tuneGain[TUNES] = { 0, 0 };            // (the sound thread's)
+static std::atomic<int> tuneWanted{0};              // 0 the title's, 1 the battle's
+static std::atomic<bool> tuneFromStart[TUNES];      // (start it again from the top as it comes in)
+static long (*const modLen[TUNES])(signed char *) = { micromod_calculate_mod_file_len, micromod2_calculate_mod_file_len };
+static long (*const modInit[TUNES])(signed char *, long) = { micromod_initialise, micromod2_initialise };
+static void (*const modGain[TUNES])(long) = { micromod_set_gain, micromod2_set_gain };
+static void (*const modPos[TUNES])(long) = { micromod_set_position, micromod2_set_position };
+static void (*const modAudio[TUNES])(short *, long) = { micromod_get_audio, micromod2_get_audio };
+
+void gameSetTune(int which, signed char *data, long len) {
+  if (which < 0 || which >= TUNES || !data || len < 1084) return;
+  long need = modLen[which](data);
+  if (need < 0 || need > len) return;            // not a MOD, or cut short: no music
+  if (modInit[which](data, 48000) != 0) return;
+  modGain[which](64);
+  tuneReady[which] = true;
+}
+
 // ============================================================ the sound
 // A few voices mixing the original's 8-bit samples up to 48 kHz. The game
 // asks for a sound by setting its bit; the sound thread starts it.
@@ -198,8 +234,31 @@ void gameAudio(short *out, int frames) {
     vc.step = A.snd[id].rate / 48000.0;
     vc.vol = soundVolAsk[id].load(std::memory_order_relaxed) / 256.0f;
   }
+  // the music: each tune fading towards its level
+  if (frames > 2048) frames = 2048;
+  static float music[2048 * 2];
+  static short tuneBuf[2048 * 2];
+  memset(music, 0, (size_t)frames * 2 * sizeof(float));
+  int want = tuneWanted.load(std::memory_order_relaxed);
+  for (int k = 0; k < TUNES; k++) {
+    float vol = k == 0 ? TITLE_MUSIC_VOLUME : GAME_MUSIC_VOLUME;
+    float target = (tuneReady[k] && want == k) ? vol : 0.0f;
+    if (!tuneReady[k] || (tuneGain[k] <= 0 && target <= 0)) continue;
+    if (tuneGain[k] <= 0 && tuneFromStart[k].exchange(false)) modPos[k](0);
+    memset(tuneBuf, 0, (size_t)frames * 4);
+    modAudio[k](tuneBuf, frames);
+    float step = vol / (MUSIC_FADE_SECONDS * 48000);
+    for (int n = 0; n < frames; n++) {
+      if (tuneGain[k] < target) tuneGain[k] = fminf(tuneGain[k] + step, target);
+      else if (tuneGain[k] > target) tuneGain[k] = fmaxf(tuneGain[k] - step, target);
+      // the MOD's channels are panned hard left and right: each side gets a little of the other
+      float ml = tuneBuf[n * 2] / 32768.0f, mr = tuneBuf[n * 2 + 1] / 32768.0f;
+      music[n * 2] += (ml * 0.62f + mr * 0.25f) * tuneGain[k];
+      music[n * 2 + 1] += (mr * 0.62f + ml * 0.25f) * tuneGain[k];
+    }
+  }
   for (int i = 0; i < frames; i++) {
-    float l = 0, r = 0;
+    float l = music[i * 2], r = music[i * 2 + 1];
     for (Voice &v : voices) {
       if (!v.data) continue;
       int p = (int)v.pos;
@@ -1179,8 +1238,8 @@ static void drawHud() {
   pxBlend(0, 0, PLAY_W - 1, 44, 0, 0, 0, 0.5f);
   snprintf(buf, sizeof(buf), "BATTLEFIELD %d-%d", mapNo < 5 ? 1 : mapNo < 10 ? 2 : 3, mapNo < 10 ? mapNo % 5 + 1 : 1);
   drawVectorText(buf, 90, 15, 1.4f, ink, false);
-  const char *goal = flagState == FLAG_HIDDEN ? "FIND THE ENEMY HQ AND TAKE BACK YOUR FLAG"
-                     : flagState == FLAG_LOOSE ? "YOUR FLAG IS LOOSE - PICK IT UP"
+  const char *goal = flagState == FLAG_HIDDEN ? "FIND THE ENEMY HQ AND CAPTURE THE ENEMY FLAG"
+                     : flagState == FLAG_LOOSE ? "THE ENEMY FLAG IS LOOSE - PICK IT UP"
                                                : "BRING THE FLAG HOME TO YOUR BASE";
   drawVectorText(goal, PLAY_CX + 60, 15, 1.4f, flagState == FLAG_CARRIED ? rgb565(255, 230, 90) : rgb565(230, 230, 230), false);
   drawVectorText(VERSION, 30, 708, 1.1f, dim, false);
@@ -1292,6 +1351,13 @@ void gameInit(uint32_t seed, const char *dir) {
 
 void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   if (dt > 0.1f) dt = 0.1f;
+  {   // the music for where we are: the battle's in a battle, the title's otherwise (each from the top)
+    int want = state == ST_PLAY ? 1 : 0;
+    if (want != tuneWanted.load(std::memory_order_relaxed)) {
+      tuneFromStart[want].store(true);
+      tuneWanted.store(want, std::memory_order_relaxed);
+    }
+  }
   if (state == ST_TITLE) {
     if (A.ok && (pressed & BTN_NEXT)) mapChoice = mapChoice >= 10 ? -1 : mapChoice + 1;
     if (A.ok && (pressed & BTN_FIRE)) startBattle(mapChoice >= 0 ? mapChoice : (int)(rnd() * 5) % 5);

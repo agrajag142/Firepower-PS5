@@ -31,9 +31,11 @@ case ${1:-} in
     sim)
         out=$here/build/sim
         mkdir -p "$out/shots"
+        gcc -O2 -c "$here/src/micromod.c" -o "$out/micromod.o"
+        gcc -O2 -c "$here/src/micromod2.c" -o "$out/micromod2.o"
         g++ -std=c++20 -O2 -I"$here/src" "$here/src/game.cpp" "$here/src/gfx.cpp" "$here/src/assets.cpp" \
-            "$here/sim/sim_main.cpp" -o "$out/sim"
-        "$out/sim" "${2:-$here/sim/tour.txt}" "$out/shots" "$here/assets/fp/"
+            "$here/sim/sim_main.cpp" "$out/micromod.o" "$out/micromod2.o" -o "$out/sim"
+        "$out/sim" "${2:-$here/sim/tour.txt}" "$out/shots" "$here/assets/fp/" "$here/assets/title.mod" "$here/assets/game.mod"
         if python3 -c 'import PIL' 2>/dev/null; then
             python3 -c 'import sys, glob, os
 from PIL import Image

@@ -237,6 +237,22 @@ static void *audioThread(void *) {
   return nullptr;
 }
 
+// The tunes from the app's assets (/app0/assets: build.sh copies assets/ in, or copy
+// them over FTP to /data/homebrew/PPSA99908/assets). Straight from the system with
+// mmap: the app's malloc heap is small. Missing: no music there.
+static void loadTune(int which, const char *path) {
+  FILE *f = fopen(path, "rb");
+  if (!f) return;
+  fseek(f, 0, SEEK_END);
+  long len = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  if (len > 0) {
+    void *p = mmap(nullptr, (size_t)len, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+    if (p != MAP_FAILED && fread(p, 1, (size_t)len, f) == (size_t)len) gameSetTune(which, (signed char *)p, len);
+  }
+  fclose(f);
+}
+
 static void soundInit() {
   int r = sceAudioOutInit();
   if (r != 0 && (unsigned)r != 0x8026000eu) printf("Sound: AudioOut init failed %x\n", (unsigned)r);   // (already initialised is fine)
@@ -260,6 +276,8 @@ int main() {
   // the game's files: assets/fp in the app (build.sh copies them in), or copied
   // over FTP to /data/homebrew/PPSA99908/assets/fp
   gameInit((uint32_t)(wall.tv_sec ^ (wall.tv_nsec >> 10)), "/app0/assets/fp/");
+  loadTune(0, "/app0/assets/title.mod");
+  loadTune(1, "/app0/assets/game.mod");
   soundInit();
   // the first picture, then the splash screen can go
   gameFrame(1 / 60.0f, 0, 0, 0, 0);

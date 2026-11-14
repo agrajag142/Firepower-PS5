@@ -10,6 +10,13 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 022
+
+- Music, as our other PS5 games: `title.mod` on the title and end screens,
+  `game.mod` in the battle (put them in `assets/`, or copy them over FTP into
+  `/data/homebrew/PPSA99908/assets/`; without them it's silent)
+- The goal reads CAPTURE THE ENEMY FLAG
+
 ## Version 021
 
 - Up to 5 helicopters at once, a new one every 30 to 50 seconds (as on the Amiga),
