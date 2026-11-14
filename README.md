@@ -10,6 +10,16 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 006
+
+- The enemy's helicopters (the Heli file: 16 headings, the turning rotor, the
+  shadow on the ground, their own missiles): the first comes in after 25
+  seconds, then one every 30-45 (two at most). They fly over walls, circle your
+  tank and fire at it. Two shells bring one down (300 points). Red dots on the
+  maps; their rotor sound when near
+- Missiles fly straight at what they're aimed at (the picture is the nearest of
+  its 8); shells fly over trees
+
 ## Version 005
 
 - The enemy's turrets: every gun position (type 37) has its gun (the Turret
@@ -47,8 +57,8 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 - The original explosions and sounds (TankBlast, Boom2, Drip)
 - A mini map, and the full map (Options)
 
-Still to come (from the disassembly, in this order): the helicopters, the
-enemy's tanks, the men to rescue and run over, the flags and the win,
+Still to come (from the disassembly, in this order): the enemy's tanks, the
+men to rescue and run over, the flags and the win,
 the pick screen and its tanks, then two players split-screen.
 
 ## Controls
@@ -103,6 +113,7 @@ firepower/build.sh sim firepower/sim/gate.txt    # out of the garage and through
 firepower/build.sh sim firepower/sim/trees.txt   # under the trees, up to their trunks
 firepower/build.sh sim firepower/sim/turret.txt  # a turret fires at the tank; the tank destroys it
 firepower/build.sh sim firepower/sim/gameover.txt   # all three tanks lost
+firepower/build.sh sim firepower/sim/heli.txt    # a helicopter attacks; the tank shoots it down
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

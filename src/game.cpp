@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 006: the enemy's helicopters (the Heli file: 16 headings, the rotor,
+// the shadow, their missiles): they fly in, circle your tank and fire; two
+// shells bring one down.
+//
 // Version 005: the enemy's turrets (the gun positions, type 37): they turn to
 // your tank when it's near and fire missiles (the Turret file's guns and
 // missiles). Your tank's armour, three tanks, losing one, game over.
@@ -35,7 +39,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V005";
+static const char *VERSION = "V006";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -60,7 +64,17 @@ static const float MISSILE_SPEED = 150.0f;
 static const float MISSILE_RANGE = 360.0f;
 static const int MISSILE_DAMAGE = 12;      // of your tank's 100 armour
 static const int TANKS = 3;                // tanks you have
-static const float RESPAWN = 2.5f;         // seconds before the next tank comes out           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
+static const float RESPAWN = 2.5f;         // seconds before the next tank comes out
+static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
+static const float HELI_EVERY = 30.0f;     // then one every this many seconds (+ up to 15)
+static const int HELI_MAX = 2;             // at once
+static const float HELI_SPEED = 95.0f;
+static const float HELI_TURN = 1.3f;       // radians a second
+static const float HELI_CIRCLE = 150.0f;   // how far out it circles your tank
+static const float HELI_RELOAD = 2.2f;
+static const int HELI_HITS = 2;            // shells to bring one down
+static const float HELI_MISSILE_SPEED = 190.0f;
+static const int HELI_MISSILE_DAMAGE = 10;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the sound
 // A few voices mixing the original's 8-bit samples up to 48 kHz. The game
@@ -130,11 +144,11 @@ static bool solidSquare(int tx, int ty) {
 }
 // A point: in a solid square, solid where its picture isn't sand (so a tank can
 // drive up to a wall or a building, not stop a square short of it)
-static bool solidAt(float x, float y) {
+static bool solidAt(float x, float y, bool trees = true) {
   int tx = (int)floorf(x / TILE), ty = (int)floorf(y / TILE);
   if (!solidSquare(tx, ty)) {
     // a tree: only its trunk, in the middle of its leaves, stops a tank
-    if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return false;
+    if (!trees || tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return false;
     int pic = typeAt(tx, ty).pic;
     for (int k = 0; k < A.nTrees[pic]; k++) {
       const Assets::Tree &tr = A.trees[pic][k];
@@ -168,7 +182,14 @@ struct Missile {
   bool live = false;
   float x, y, dx, dy, left;
   int frame;                // 0..7
-  int from;                 // the turret's square (it flies out over its own base)
+  int from;                 // the turret's square (it flies out over its own base), or -1
+  bool air;                 // a helicopter's (its own pictures; it flies over walls)
+};
+struct Heli {
+  bool live = false;
+  float x, y, heading, reload, sound;
+  int hits;
+  float side;               // which way it circles (+1 / -1)
 };
 struct Shell {
   bool live = false;
@@ -188,6 +209,9 @@ static int score = 0, destroyed = 0, tanksLeft = TANKS, tanksLost = 0;
 static Turret turrets[96];
 static int nTurrets = 0;
 static Missile missiles[48];
+static Heli helis[HELI_MAX];
+static float heliTimer = 0;
+static int helisDown = 0;
 static int startSquare = 0;
 static uint32_t rng = 1;
 static float rnd() {   // 0..1
@@ -287,6 +311,9 @@ static void startBattle(int m) {
   for (int i = 0; i < MAPN * MAPN && nTurrets < 96; i++)
     if (field[i] == 37) turrets[nTurrets++] = { i, rnd() * TWO_PI, 1 + rnd() * TURRET_RELOAD };
   for (Missile &mm : missiles) mm.live = false;
+  for (Heli &h : helis) h.live = false;
+  heliTimer = HELI_FIRST;
+  helisDown = 0;
   for (Shell &s : shells) s.live = false;
   for (Boom &b : booms) b.live = false;
   score = destroyed = 0;
@@ -372,6 +399,8 @@ static void fire() {
     }
 }
 
+static bool shellHitsHeli(float x, float y);   // (the helicopters, below)
+
 static void moveShells(float dt) {
   for (Shell &s : shells) {
     if (!s.live) continue;
@@ -380,7 +409,9 @@ static void moveShells(float dt) {
     for (int k = 0; k < steps && s.live; k++) {
       s.x += s.dx * dt / steps;
       s.y += s.dy * dt / steps;
-      if (solidAt(s.x, s.y)) {
+      if (shellHitsHeli(s.x, s.y)) {
+        s.live = false;
+      } else if (solidAt(s.x, s.y, false)) {   // (shells fly over trees)
         hitSquare((int)floorf(s.x / TILE), (int)floorf(s.y / TILE), s.x, s.y);
         s.live = false;
       }
@@ -418,10 +449,10 @@ static void tankHit(int damage, float x, float y) {
 static void fireMissile(float x, float y, float heading, int from) {
   for (Missile &mm : missiles)
     if (!mm.live) {
-      int f = roundi(heading / TWO_PI * 8) & 7;
-      float a = f * TWO_PI / 8;   // along the gun as drawn
+      int f = roundi(heading / TWO_PI * 8) & 7;   // (the picture: the nearest of 8)
+      float a = heading;                          // it flies where the gun points
       mm = { true, x + sinf(a) * 12, y - cosf(a) * 12, sinf(a) * MISSILE_SPEED, -cosf(a) * MISSILE_SPEED,
-             MISSILE_RANGE / MISSILE_SPEED, f, from };
+             MISSILE_RANGE / MISSILE_SPEED, f, from, false };
       playSound(SND_TANKBLAST, 0.45f);
       return;
     }
@@ -454,9 +485,9 @@ static void moveMissiles(float dt) {
       mm.y += mm.dy * dt / 3;
       float dx = mm.x - tank.x, dy = mm.y - tank.y;
       if (tank.alive && dx * dx + dy * dy < 12 * 12) {
-        tankHit(MISSILE_DAMAGE, mm.x, mm.y);
+        tankHit(mm.air ? HELI_MISSILE_DAMAGE : MISSILE_DAMAGE, mm.x, mm.y);
         mm.live = false;
-      } else if (solidAt(mm.x, mm.y) && sq((int)floorf(mm.x / TILE), (int)floorf(mm.y / TILE)) != mm.from) {
+      } else if (!mm.air && solidAt(mm.x, mm.y, false) && sq((int)floorf(mm.x / TILE), (int)floorf(mm.y / TILE)) != mm.from) {
         // the enemy's missiles wear down what they hit, as your shells do
         int tx = (int)floorf(mm.x / TILE), ty = (int)floorf(mm.y / TILE);
         if (tx >= 0 && ty >= 0 && tx < MAPN && ty < MAPN && field[sq(tx, ty)] != 37) {
@@ -471,6 +502,104 @@ static void moveMissiles(float dt) {
       addBoom(mm.x, mm.y, false);
     }
   }
+}
+
+// ============================================================ the helicopters
+static void spawnHeli() {
+  for (Heli &h : helis)
+    if (!h.live) {
+      // from beyond the view, on a random side of your tank, heading for it
+      float a = rnd() * TWO_PI, d = 750;
+      h.x = tank.x + sinf(a) * d;
+      h.y = tank.y - cosf(a) * d;
+      h.x = h.x < -100 ? -100 : (h.x > WORLD + 100 ? WORLD + 100 : h.x);
+      h.y = h.y < -100 ? -100 : (h.y > WORLD + 100 ? WORLD + 100 : h.y);
+      h.heading = atan2f(tank.x - h.x, -(tank.y - h.y));
+      h.reload = HELI_RELOAD;
+      h.sound = 0;
+      h.hits = 0;
+      h.side = rnd() < 0.5f ? 1 : -1;
+      h.live = true;
+      return;
+    }
+}
+
+static void heliMissile(const Heli &h, float aim) {
+  for (Missile &mm : missiles)
+    if (!mm.live) {
+      int f = roundi(aim / TWO_PI * 8) & 7;   // (the picture: the nearest of its 8)
+      float a = aim;                          // straight at your tank
+      mm = { true, h.x + sinf(a) * 22, h.y - cosf(a) * 22, sinf(a) * HELI_MISSILE_SPEED, -cosf(a) * HELI_MISSILE_SPEED,
+             MISSILE_RANGE / HELI_MISSILE_SPEED, f, -1, true };
+      playSound(SND_TANKBLAST, 0.4f);
+      return;
+    }
+}
+
+static void updateHelis(float dt) {
+  int live = 0;
+  for (Heli &h : helis) live += h.live;
+  heliTimer -= dt;
+  if (heliTimer <= 0 && tank.alive) {
+    if (live < HELI_MAX) spawnHeli();
+    heliTimer = HELI_EVERY + rnd() * 15;
+  }
+  for (Heli &h : helis) {
+    if (!h.live) continue;
+    // where it heads: a point on a circle round your tank, ahead of it on its way round
+    float dx = h.x - tank.x, dy = h.y - tank.y, dist = sqrtf(dx * dx + dy * dy) + 0.01f;
+    float tx, ty;
+    if (dist > HELI_CIRCLE * 1.6f) {
+      tx = tank.x;
+      ty = tank.y;
+    } else {
+      float a = atan2f(dy, dx) + h.side * 0.7f;
+      tx = tank.x + cosf(a) * HELI_CIRCLE;
+      ty = tank.y + sinf(a) * HELI_CIRCLE;
+    }
+    float want = atan2f(tx - h.x, -(ty - h.y));
+    float diff = wrapAngle(want - h.heading), turn = HELI_TURN * dt;
+    h.heading = wrapAngle(h.heading + (diff > turn ? turn : (diff < -turn ? -turn : diff)));
+    h.x += sinf(h.heading) * HELI_SPEED * dt;
+    h.y -= cosf(h.heading) * HELI_SPEED * dt;
+    // fire when it faces your tank, near enough
+    h.reload -= dt;
+    float toTank = atan2f(tank.x - h.x, -(tank.y - h.y));
+    // fire when your tank is ahead of it (not behind), near enough
+    if (tank.alive && dist < 330 && h.reload <= 0 && fabsf(wrapAngle(toTank - h.heading)) < 1.75f) {
+      heliMissile(h, toTank);
+      h.reload = HELI_RELOAD * (0.8f + 0.5f * rnd());
+    }
+    // its rotor, louder near
+    h.sound -= dt;
+    if (h.sound <= 0 && dist < 700) {
+      playSound(SND_HELI, 0.25f + 0.5f * (1 - dist / 700));
+      h.sound = 0.16f;
+    }
+  }
+}
+
+// A shell reaching a helicopter
+static bool shellHitsHeli(float x, float y) {
+  for (Heli &h : helis) {
+    if (!h.live) continue;
+    float dx = x - h.x, dy = y - h.y;
+    if (dx * dx + dy * dy > 21 * 21) continue;
+    addBoom(x, y, false);
+    if (++h.hits >= HELI_HITS) {
+      h.live = false;
+      addBoom(h.x, h.y, true);
+      addBoom(h.x - 8, h.y + 6, true);
+      playSound(SND_BOOM2);
+      score += 300;
+      helisDown++;
+      destroyed++;
+    } else {
+      playSound(SND_DRIP, 0.6f);
+    }
+    return true;
+  }
+  return false;
 }
 
 // After a tank is lost: the next comes out of the garage, or it's over
@@ -588,6 +717,8 @@ static void drawMap(int x0, int y0, int cell, float alpha) {
     float tx = x0 + tank.x / TILE * cell, ty = y0 + tank.y / TILE * cell;
     pxCircle(tx, ty, cell < 6 ? 4.5f : 7, rgba(255, 230, 60));
   }
+  for (Heli &h : helis)
+    if (h.live) pxCircle(x0 + h.x / TILE * cell, y0 + h.y / TILE * cell, cell < 6 ? 3.5f : 6, rgba(255, 60, 40));
 }
 
 static void drawHud() {
@@ -624,6 +755,8 @@ static void drawOver(float dt) {
   drawVectorText(buf, 640, 390, 2.2f, rgb565(255, 255, 255), true);
   snprintf(buf, sizeof(buf), "INFLICTED: %d DESTROYED", destroyed);
   drawVectorText(buf, 640, 440, 1.8f, rgb565(220, 220, 220), false);
+  snprintf(buf, sizeof(buf), "HELICOPTERS DOWNED: %d", helisDown);
+  drawVectorText(buf, 640, 520, 1.8f, rgb565(220, 220, 220), false);
   snprintf(buf, sizeof(buf), "CASUALTIES: TANKS %d", tanksLost);
   drawVectorText(buf, 640, 480, 1.8f, rgb565(220, 220, 220), false);
   if (overT > 1.0f && fmodf(overT, 1.0f) < 0.7f) drawVectorText("PRESS X", 640, 600, 2.4f, rgb565(255, 220, 120), true);
@@ -728,6 +861,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     moveShells(dt);
     updateGates(dt);
     updateTurrets(dt);
+    updateHelis(dt);
     moveMissiles(dt);
     updateRespawn(dt);
   }
@@ -747,9 +881,18 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   for (Shell &s : shells)
     if (s.live) drawPic2x(A.shell.pic[s.frame], s.x, s.y);
   for (Missile &mm : missiles)
-    if (mm.live) drawPic2x(A.turret.pic[8 + mm.frame], mm.x, mm.y);
+    if (mm.live) drawPic2x(mm.air ? A.heli.pic[34 + mm.frame] : A.turret.pic[8 + mm.frame], mm.x, mm.y);
+  // helicopters' shadows on the ground, below and to the right of them
+  for (Heli &h : helis)
+    if (h.live && A.heli.n > 33) drawPic2x(A.heli.pic[18 + frameOf(h.heading)], h.x + 18, h.y + 26);
   if (tank.alive) drawPic2x(A.tank.pic[frameOf(tank.heading)], tank.x, tank.y);
   drawRoofs();
+  // and the helicopters themselves, over everything, their rotors turning
+  for (Heli &h : helis) {
+    if (!h.live || A.heli.n < 18) continue;
+    drawPic2x(A.heli.pic[frameOf(h.heading)], h.x, h.y);
+    drawPic2x(A.heli.pic[16 + ((int)(clockT * 20) & 1)], h.x, h.y);
+  }
   drawBooms(mapOpen ? 0 : dt);
   drawHud();
   if (mapOpen) {
@@ -759,7 +902,13 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   } else {
     drawMap(FB_W - MAPN * 3 - 24, FB_H - MAPN * 3 - 24, 3, 0.5f);
   }
-  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d", tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft);
+  float hd = -1;
+  int nm = 0;
+  for (Heli &h : helis)
+    if (h.live) hd = sqrtf((h.x - tank.x) * (h.x - tank.x) + (h.y - tank.y) * (h.y - tank.y));
+  for (Missile &mm : missiles) nm += mm.live && mm.air;
+  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d heli %.0f air-missiles %d",
+           tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft, hd, nm);
 }
 
 const char *gameDebug() { return debugText; }
