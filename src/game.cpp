@@ -6,6 +6,9 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 016: shells reach about 165 pixels (on the Amiga: three quarters of
+// its battle view, which is about 218 pixels across).
+//
 // Version 015: turrets reach about 110 pixels (checked against the Amiga
 // game: they fire only from just off the edge of its small battle view).
 //
@@ -81,7 +84,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V015";
+static const char *VERSION = "V016";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -94,7 +97,7 @@ static const float TANK_ACCEL = 160.0f;
 static const float TANK_TURN = 3.2f;       // radians a second
 static const float TANK_RADIUS = 10.0f;    // its body, for the walls
 static const float SHELL_SPEED = 260.0f;
-static const float SHELL_RANGE = 300.0f;
+static const float SHELL_RANGE = 165.0f;   // (the Amiga: 3/4 of its ~218-pixel battle view)
 static const float RELOAD = 0.45f;
 static const int SHELL_DAMAGE = 5;         // a building (strength 15) takes three
 static const float GATE_CLOSE = 1.0f;
