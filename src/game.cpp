@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V030";
+static const char *VERSION = "V031";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -421,12 +421,22 @@ static float rnd() {   // 0..1
 }
 static float clockT = 0;
 
-enum State { ST_TITLE, ST_PICK, ST_PLAY, ST_OVER, ST_WON };
+enum State { ST_TITLE, ST_PICK, ST_PLAY, ST_OVER, ST_WON, ST_ENTRY };
 static State state = ST_TITLE;
 static float overT = 0;   // on the game over screen
 static bool menuOpen = false;    // the settings menu (Options): the battle waits
 static bool fireLatch = false;   // X still down from starting (or closing the menu): no shot till it's let go
+#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
+#define FP_SETTINGS_FILE nullptr          // (the PC test build: not kept)
+#else
+#define FP_DATA_DIR "/download0/firepower"   // (the title's own storage: the rest of /data can't be written)
+#define FP_SETTINGS_FILE FP_DATA_DIR "/settings.bin"
+#endif
+static uint32_t menuPrevDirs = 0;
+static float menuRepeatT = 0;
 static float titleT = 0;
+static const float TITLE_LOGO_SECONDS = 10.0f;   // the new title: the picture this long,
+static const float TITLE_TABLE_SECONDS = 8.0f;   //   then the high scores this long
 static char debugText[256];
 
 static inline int roundi(float v) { return (int)floorf(v + 0.5f); }
@@ -1326,6 +1336,217 @@ static void drawOver(float dt) {
   if (overT > 1.0f && fmodf(overT, 1.0f) < 0.7f) drawVectorText("PRESS X", 640, 600, 2.4f, rgb565(255, 220, 120), true);
 }
 
+// ============================================================ the high scores (CLASSIC off)
+// The ten best, kept on the PS5 beside the settings: initials, score, the
+// battlefield and whether it was won. After a battle good enough, the initials.
+#define HI_COUNT 10
+struct HiEntry { char name[4]; int32_t score; int8_t field; int8_t won; int8_t pad[2]; };
+static HiEntry hiTable[HI_COUNT] = {
+  { "MIC", 20000, 0, 1, {} }, { "ILL", 17500, 1, 1, {} }, { "AMI", 15000, 2, 1, {} }, { "GEN", 12500, 3, 1, {} },
+  { "COL", 10000, 4, 0, {} }, { "MAJ", 8000, 0, 0, {} },  { "CPT", 6000, 1, 0, {} },  { "SGT", 4000, 2, 0, {} },
+  { "CPL", 2500, 3, 0, {} },  { "PVT", 1000, 4, 0, {} },
+};
+static int entrySlot = -1, entryPos = 0;
+static char entryName[4] = "AAA";
+static float entryT = 0;
+static bool entryWon = false;
+
+static void loadHiScores() {
+#ifdef FP_DATA_DIR
+  FILE *f = fopen(FP_DATA_DIR "/hiscores.bin", "rb");
+  if (!f) return;
+  HiEntry t[HI_COUNT];
+  size_t got = fread(t, 1, sizeof(t), f);
+  fclose(f);
+  if (got != sizeof(t)) return;
+  for (int i = 0; i < HI_COUNT; i++)
+    if (t[i].score < 0 || t[i].name[3] != 0 || t[i].field < 0 || t[i].field > 10) return;   // (not ours)
+  memcpy(hiTable, t, sizeof(t));
+#endif
+}
+static void saveHiScores() {
+#ifdef FP_DATA_DIR
+  mkdir(FP_DATA_DIR, 0777);
+  FILE *f = fopen(FP_DATA_DIR "/hiscores.bin", "wb");
+  if (!f) return;
+  fwrite(hiTable, 1, sizeof(hiTable), f);
+  fclose(f);
+#endif
+}
+
+static void goToTitle() {
+  state = ST_TITLE;
+  titleT = 0;
+}
+
+// The battle is over (lost or won): a place in the table? (CLASSIC off) the initials, else the title
+static void afterGame() {
+  entrySlot = -1;
+  if (!classic && score > 0)
+    for (int i = 0; i < HI_COUNT; i++)
+      if (score > hiTable[i].score) { entrySlot = i; break; }
+  if (entrySlot < 0) { goToTitle(); return; }
+  entryWon = state == ST_WON;
+  state = ST_ENTRY;
+  entryPos = 0;
+  entryT = 0;
+  strcpy(entryName, "AAA");
+  menuPrevDirs = BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN;
+  playSound(SND_BOOM2, 0.6f);
+}
+
+static void updateEntry(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
+  entryT += dt;
+  uint32_t dirs = held & (BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN);
+  if (sx < -0.5f) dirs |= BTN_LEFT;
+  if (sx > 0.5f) dirs |= BTN_RIGHT;
+  if (sy < -0.5f) dirs |= BTN_UP;
+  if (sy > 0.5f) dirs |= BTN_DOWN;
+  uint32_t step = dirs & ~menuPrevDirs;
+  if (step) menuRepeatT = 0.4f;
+  else if (dirs & (BTN_UP | BTN_DOWN)) {
+    menuRepeatT -= dt;
+    if (menuRepeatT <= 0) { step = dirs & (BTN_UP | BTN_DOWN); menuRepeatT = 0.1f; }
+  }
+  menuPrevDirs = dirs;
+  char &c = entryName[entryPos];
+  if (step & BTN_UP) { c = c >= 'Z' ? 'A' : c + 1; playSound(SND_DRIP, 0.4f); }
+  if (step & BTN_DOWN) { c = c <= 'A' ? 'Z' : c - 1; playSound(SND_DRIP, 0.4f); }
+  if ((step & BTN_LEFT) && entryPos > 0) entryPos--;
+  if (((pressed & BTN_FIRE) || (step & BTN_RIGHT)) && entryT > 0.3f) {
+    playSound(SND_DRIP, 0.7f);
+    if (++entryPos >= 3) {   // done: into the table
+      for (int i = HI_COUNT - 1; i > entrySlot; i--) hiTable[i] = hiTable[i - 1];
+      HiEntry &e = hiTable[entrySlot];
+      memcpy(e.name, entryName, 4);
+      e.score = score;
+      e.field = (int8_t)mapNo;
+      e.won = entryWon;
+      saveHiScores();
+      playSound(SND_BOOM2, 0.6f);
+      goToTitle();
+      titleT = TITLE_LOGO_SECONDS;   // (straight to the table, to see it there)
+    }
+  }
+}
+
+// ---- the new title's effects: embers rising, a shine across the letters, the sight's glow
+struct Ember { float x, y, vx, vy, life, max, size; bool live; };
+static Ember embers[90];
+
+static inline void addPx(int x, int y, int r, int g, int b) {
+  if (x < 0 || y < 0 || x >= FB_W || y >= FB_H) return;
+  uint32_t &p = g_frame[(size_t)y * FB_W + x];
+  int pr = (p & 255) + r, pg = ((p >> 8) & 255) + g, pb = ((p >> 16) & 255) + b;
+  p = 0xff000000u | (uint32_t)(pb > 255 ? 255 : pb) << 16 | (uint32_t)(pg > 255 ? 255 : pg) << 8 | (uint32_t)(pr > 255 ? 255 : pr);
+}
+
+static void drawEmbers(float dt) {
+  for (Ember &e : embers) {
+    if (!e.live) {
+      if (rnd() < dt * 2.5f) {   // new ones keep coming up from the bottom
+        e = { rnd() * FB_W, FB_H + 10.0f, (rnd() - 0.5f) * 30, -(60 + rnd() * 140), 0, 4 + rnd() * 5, 2.5f + rnd() * 3.5f, true };
+      }
+      continue;
+    }
+    e.life += dt;
+    if (e.life >= e.max || e.y < -10) { e.live = false; continue; }
+    e.vx += (rnd() - 0.5f) * 60 * dt;
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    float k = e.life / e.max, a = (k < 0.15f ? k / 0.15f : 1 - (k - 0.15f) / 0.85f) * (0.7f + 0.3f * sinf(e.life * 13 + e.x));
+    int n = (int)e.size;
+    for (int dy = -n; dy <= n; dy++)
+      for (int dx = -n; dx <= n; dx++) {
+        float f = 1 - (dx * dx + dy * dy) / (float)((n + 1) * (n + 1));
+        if (f <= 0) continue;
+        f *= a;
+        addPx((int)e.x + dx, (int)e.y + dy, (int)(400 * f), (int)((140 + 120 * (1 - k)) * f), (int)(50 * f));
+      }
+  }
+}
+
+// The new title picture at ox, oy, with its shine and its sight's glow
+static void drawTitleHd(int ox, int oy, float t) {
+  const Pic &p = A.titleHd;
+  for (int y = 0; y < p.h; y++) memcpy(g_frame + (size_t)(oy + y) * FB_W + ox, p.px + (size_t)y * p.w, (size_t)p.w * 4);
+  // a shine sweeps across the letters every few seconds (only where the picture isn't dark)
+  float st = fmodf(t, 6.0f);
+  if (st < 1.4f) {
+    float pos = -200 + (p.w + 400) * (st / 1.4f);
+    for (int y = 0; y < p.h; y++) {
+      float c = pos + (y - p.h / 2) * 0.35f;
+      int x0 = (int)(c - 110), x1 = (int)(c + 110);
+      if (x0 < 0) x0 = 0;
+      if (x1 > p.w - 1) x1 = p.w - 1;
+      uint32_t *row = g_frame + (size_t)(oy + y) * FB_W + ox;
+      for (int x = x0; x <= x1; x++) {
+        uint32_t q = row[x];
+        int r = q & 255, g = (q >> 8) & 255, b = (q >> 16) & 255;
+        int lum = (r * 3 + g * 6 + b) / 10;
+        if (lum < 25) continue;
+        float f = 1 - fabsf(x - c) / 110.0f;
+        f = f * sqrtf(f) * 0.95f * (lum < 70 ? (lum - 25) / 45.0f : 1.0f);
+        r += (int)((255 - r) * f); g += (int)((255 - g) * f); b += (int)((255 - b) * f);
+        row[x] = 0xff000000u | (uint32_t)b << 16 | (uint32_t)g << 8 | (uint32_t)r;
+      }
+    }
+  }
+  // the sight under the name: a red glow, beating (where it is in the picture)
+  float cx = ox + p.w * (797.0f / 1623), cy = oy + p.h * (770.0f / 969);
+  float beat = 0.5f + 0.5f * sinf(t * 4.0f);
+  glowDisc(cx / UNIT_K, cy / UNIT_K, (40 + 18 * beat) * p.w / 1507.0f / UNIT_K * 1.5f, 255, 40, 30, 0.25f + 0.3f * beat);
+}
+
+static void drawHiTable(float cy0, int highlight) {
+  drawVectorText("RANK   NAME      SCORE    BATTLEFIELD   RESULT", 640, cy0, 1.7f, rgb565(255, 150, 70), false);
+  for (int r = 0; r < HI_COUNT; r++) {
+    const HiEntry &e = hiTable[r];
+    char fname[16], b[96];
+    snprintf(fname, sizeof(fname), "%d-%d", e.field < 5 ? 1 : e.field < 10 ? 2 : 3, e.field < 10 ? e.field % 5 + 1 : 1);
+    snprintf(b, sizeof(b), "%2d.    %.3s    %7ld       %-5s       %-4s", r + 1, e.name, (long)e.score, fname, e.won ? "WON" : "-");
+    bool hl = r == highlight;
+    drawVectorText(b, 640, cy0 + 36 + r * 30, 1.9f, hl ? rgb565(255, 225, 120) : rgb565(215, 210, 200), hl);
+  }
+}
+
+// NEW HIGH SCORE: the initials, three letters
+static void drawEntry(float dt) {
+  pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
+  drawEmbers(dt);
+  float pulse = 0.7f + 0.3f * sinf(entryT * 4);
+  drawVectorText("NEW HIGH SCORE", 640, 60, 4.4f, rgb565((int)(255 * pulse), (int)(120 * pulse), (int)(50 * pulse)), true);
+  char b[64];
+  snprintf(b, sizeof(b), "%d", score);
+  drawVectorText(b, 640, 120, 3.6f, rgb565(240, 240, 245), true);
+  drawVectorText("ENTER YOUR INITIALS", 640, 165, 2.0f, rgb565(190, 180, 170), false);
+  for (int k = 0; k < 3; k++) {
+    int cx = 640 - 100 + k * 100, cy = 240;
+    bool on = k == entryPos;
+    fillRect(cx - 38, cy - 46, cx + 38, cy + 46, on ? rgb565(50, 28, 20) : rgb565(24, 16, 12));
+    drawRectOutline(cx - 38, cy - 46, cx + 38, cy + 46, on ? rgb565(255, 120, 60) : rgb565(100, 70, 50), on ? 3 : 1);
+    char l[2] = { entryName[k], 0 };
+    drawVectorText(l, cx, cy, 8.0f, on ? rgb565(255, 225, 120) : rgb565(220, 215, 205), true);
+    if (on) {
+      int ax[3] = { cx - 12, cx + 12, cx }, ay[3] = { cy - 54, cy - 54, cy - 68 };
+      fillPolygon(ax, ay, 3, rgb565(255, 120, 60));
+      int bx[3] = { cx - 12, cx + 12, cx }, by[3] = { cy + 54, cy + 54, cy + 68 };
+      fillPolygon(bx, by, 3, rgb565(255, 120, 60));
+    }
+  }
+  drawVectorText("UP / DOWN: LETTER     X: NEXT     LEFT: BACK", 640, 330, 1.6f, rgb565(160, 150, 140), false);
+  // the table as it will be
+  HiEntry keep[HI_COUNT];
+  memcpy(keep, hiTable, sizeof(keep));
+  for (int i = HI_COUNT - 1; i > entrySlot; i--) hiTable[i] = hiTable[i - 1];
+  memcpy(hiTable[entrySlot].name, entryName, 4);
+  hiTable[entrySlot].score = score;
+  hiTable[entrySlot].field = (int8_t)mapNo;
+  hiTable[entrySlot].won = entryWon;
+  drawHiTable(375, entrySlot);
+  memcpy(hiTable, keep, sizeof(keep));
+}
+
 static void drawTitle(float dt) {
   titleT += dt;
   pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
@@ -1338,10 +1559,27 @@ static void drawTitle(float dt) {
     drawVectorText("(OR COPY ASSETS/FP OVER FTP INTO THE APP'S ASSETS FOLDER)", 640, 505, 1.4f, rgb565(200, 200, 200), false);
     return;
   }
-  if (!classic && A.titleHd.w) {   // the new title (CLASSIC off)
+  if (!classic && A.titleHd.w) {   // the new title (CLASSIC off): the picture, then the high scores, in turn
     const Pic &t = A.titleHd;
-    int ox = (FB_W - t.w) / 2, oy = 20;
-    for (int y = 0; y < t.h; y++) memcpy(g_frame + (size_t)(oy + y) * FB_W + ox, t.px + (size_t)y * t.w, (size_t)t.w * 4);
+    float cyc = fmodf(titleT, TITLE_LOGO_SECONDS + TITLE_TABLE_SECONDS);
+    if (cyc < TITLE_LOGO_SECONDS) {
+      drawTitleHd((FB_W - t.w) / 2, 20, titleT);
+    } else {   // the table, under the name
+      int top = 30, h = 190;
+      for (int y = 0; y < h; y++) {   // (the picture's top band, the name, scaled down)
+        int sy = (int)(y * (t.h * 0.82f) / h) + (int)(t.h * 0.02f);
+        uint32_t *row = g_frame + (size_t)(top + y) * FB_W;
+        int w = (int)(t.w * h / (t.h * 0.82f)), ox = (FB_W - w) / 2;
+        const uint32_t *src = t.px + (size_t)sy * t.w;
+        for (int x = 0; x < w; x++) row[ox + x] = src[x * t.w / w];
+      }
+      drawVectorText("HIGH SCORES", 640, 180, 3.0f, rgb565(255, 120, 60), true);
+      drawHiTable(232, -1);
+    }
+    drawEmbers(dt);
+    // a fade through black between the two
+    float f = fminf(fminf(cyc, fabsf(cyc - TITLE_LOGO_SECONDS)), TITLE_LOGO_SECONDS + TITLE_TABLE_SECONDS - cyc);
+    if (titleT > 0.5f && f < 0.35f) pxBlend(0, 0, FB_W - 1, 1000, 0, 0, 0, 1 - f / 0.35f);
   } else {
   // the original title picture at 4x
   const Pic &t = A.title;
@@ -1390,18 +1628,10 @@ static void drawRoofs() {
 // ============================================================ the settings menu
 // Options opens it, on the title screen or in the battle (which waits): the music
 // on or off, its volume, the sounds' volume, and the ways out. Kept on the PS5.
-#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
-#define FP_SETTINGS_FILE nullptr          // (the PC test build: not kept)
-#else
-#define FP_DATA_DIR "/download0/firepower"   // (the title's own storage: the rest of /data can't be written)
-#define FP_SETTINGS_FILE FP_DATA_DIR "/settings.bin"
-#endif
 enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RANDOM, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
 static int menuSel = 0;
 static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
 static bool quitAsked = false;      // the platform closes the app
-static uint32_t menuPrevDirs = 0;
-static float menuRepeatT = 0;
 
 static void loadSettings() {
   const char *path = FP_SETTINGS_FILE;
@@ -1630,6 +1860,7 @@ void gameInit(uint32_t seed, const char *dir) {
   gfxInit();
   assetsLoad(dir);
   loadSettings();
+  loadHiScores();
   state = ST_TITLE;
 }
 
@@ -1677,10 +1908,13 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   }
   if (state == ST_OVER || state == ST_WON) {
     drawOver(dt);
-    if (overT > 1.0f && (pressed & BTN_FIRE)) {
-      state = ST_TITLE;
-      titleT = 0;
-    }
+    if (overT > 1.0f && (pressed & BTN_FIRE)) afterGame();
+    return;
+  }
+  if (state == ST_ENTRY) {
+    updateEntry(dt, held, pressed, sx, sy);
+    if (state == ST_ENTRY) drawEntry(dt);
+    else drawTitle(dt);
     return;
   }
   if (!menuOpen) clockT += dt;

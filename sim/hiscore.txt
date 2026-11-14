@@ -1,0 +1,39 @@
+# A won battle good enough for the table (CLASSIC off): the initials, then the table on the title
+# The one-player battle (seed 1: the HQ at square 26,17, in an enemy compound with two
+# turret bunkers): knock out the bunkers, open the HQ, take the flag, bring it home
+battlefield 0
+tap FIRE
+hold NONE 2
+god on
+place 1696 1184 2
+hold FIRE 100
+hold NONE 10
+place 1696 1184 1
+hold FIRE 120
+hold NONE 10
+place 1696 1184 0
+hold FIRE 30
+hold NONE 20
+hold FIRE 480
+hold NONE 40
+hold UP 70
+hold NONE 10
+place 1440 820 0
+hold UP 120
+hold NONE 30
+hold NONE 70
+tap FIRE
+hold NONE 30
+tap UP
+tap UP
+tap FIRE
+tap DOWN
+tap FIRE
+shot hi_entry
+tap FIRE
+hold NONE 30
+shot hi_table
+hold NONE 520
+shot hi_logo_fade
+hold NONE 80
+shot hi_logo

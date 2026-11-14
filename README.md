@@ -10,6 +10,16 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 031: high scores (CLASSIC off)
+
+- A table of the ten best (initials, score, battlefield, won or not), kept on
+  the PS5. After a battle (won or lost) good enough for it, NEW HIGH SCORE:
+  three initials (up and down for the letter, X for the next, left to go back)
+- The new title comes alive: embers drift up, a shine sweeps across the
+  letters every few seconds and the sight under the name glows. It takes turns
+  with the high score table (10 seconds the title, 8 the table)
+- With CLASSIC on there are no high scores, and the original title is as it was
+
 ## Version 030
 
 - The helicopters' missiles damage what they hit - your buildings, walls and
@@ -306,6 +316,7 @@ firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only 
 firepower/build.sh sim firepower/sim/full.txt    # the tank full: the other men wait clear of it
 firepower/build.sh sim firepower/sim/showflag.txt   # SHOW FLAG: the flag on the radar
 firepower/build.sh sim firepower/sim/pick.txt    # RANDOM BATTLEFIELD off: choosing the battlefield
+firepower/build.sh sim firepower/sim/hiscore.txt   # a won battle into the high score table
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```
