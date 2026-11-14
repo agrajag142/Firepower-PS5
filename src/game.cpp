@@ -293,7 +293,7 @@ static bool solidSquare(int tx, int ty) {
 }
 // A point: in a solid square, solid where its picture isn't sand (so a tank can
 // drive up to a wall or a building, not stop a square short of it)
-static bool solidAt(float x, float y, bool trees = true) {
+static bool solidAt(float x, float y, bool trees = true, bool debris = true) {
   int tx = (int)floorf(x / TILE), ty = (int)floorf(y / TILE);
   if (!solidSquare(tx, ty)) {
     if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return false;
@@ -307,7 +307,7 @@ static bool solidAt(float x, float y, bool trees = true) {
     int pic = typeAt(tx, ty).pic;
     {
       int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
-      if (A.tileDebris[pic][py * TILE + px]) return true;
+      if (debris && A.tileDebris[pic][py * TILE + px]) return true;
     }
     // a tree: only its trunk, in the middle of its leaves, stops a tank
     if (!trees) return false;
@@ -974,7 +974,7 @@ static void updateMen(float dt) {
       m.turn = 1 + rnd() * 2.5f;
     }
     float nx = m.x + m.dx * speed * dt, ny = m.y + m.dy * speed * dt;
-    if (!solidAt(nx, ny, false) && nx > 2 && ny > 2 && nx < WORLD - 2 && ny < WORLD - 2) {
+    if (!solidAt(nx, ny, false, false) && nx > 2 && ny > 2 && nx < WORLD - 2 && ny < WORLD - 2) {
       m.x = nx;
       m.y = ny;
     } else {
