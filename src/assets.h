@@ -62,6 +62,7 @@ struct Assets {
   int nTrees[50];
   Tree trees[50][4];
   PicSet tank, scorp, shadow, turret, heli, men, boom, shell, numbers;
+  PicSet heliEnemy;           // the helicopter in the enemy's colours (its 16 headings: the original's copies at $3a88)
   TileType types[93];
   uint8_t maps[11][4096];     // mapp1/t1..t5, mapp2/t1..t5, mapp3/t1 (x * 64 + y)
   Sound snd[SND_COUNT];

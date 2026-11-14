@@ -10,6 +10,11 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 010
+
+- The enemy's helicopters in the enemy's colours (green), as the original's
+  copies of them
+
 ## Version 009: the original's one-player battle
 
 - One of the enemy's big green bunkers is its headquarters, picked at random

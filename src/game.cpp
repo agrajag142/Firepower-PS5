@@ -6,6 +6,8 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 010: the enemy's helicopters in the enemy's colours (green).
+//
 // Version 009: the original's one-player battle. One of the enemy's big
 // bunkers (type 92; the original's sub_07f50 picks one at random each game)
 // is its headquarters (type 69): one shell opens it to its inner bunker (81),
@@ -58,7 +60,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V009";
+static const char *VERSION = "V010";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -1053,7 +1055,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   // and the helicopters themselves, over everything, their rotors turning
   for (Heli &h : helis) {
     if (!h.live || A.heli.n < 18) continue;
-    drawPic2x(A.heli.pic[frameOf(h.heading)], h.x, h.y);
+    drawPic2x(A.heliEnemy.pic[frameOf(h.heading)], h.x, h.y);   // the enemy's: green
     drawPic2x(A.heli.pic[16 + ((int)(clockT * 20) & 1)], h.x, h.y);
   }
   drawBooms(mapOpen ? 0 : dt);

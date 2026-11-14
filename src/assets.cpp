@@ -216,6 +216,10 @@ bool assetsLoad(const char *dir) {
       !loadSet("gr/turret", A.turret) || !loadSet("gr/heli", A.heli) || !loadSet("gr/men", A.men) ||
       !loadSet("gr/boom", A.boom) || !loadSet("gr/tank_miss", A.shell) || !loadSet("gr/numbers", A.numbers))
     return false;
+  gClear = 8;   // the enemy's helicopter: copies with colour bit 3 cleared, as its tiles
+  okE = loadSet("gr/heli", A.heliEnemy);
+  gClear = 0;
+  if (!okE) return false;
 
   uint8_t *tt = readFile("tiletypes.bin", &len);
   if (!tt || len < 93 * 16) return false;
