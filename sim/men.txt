@@ -9,6 +9,7 @@ place 1376 830 0
 hold FIRE 90
 hold NONE 20
 shot men0
+place 1450 830 0
 hold NONE 650
 shot men1
 place 1376 800 12
