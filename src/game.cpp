@@ -111,7 +111,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V023";
+static const char *VERSION = "V024";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -303,12 +303,10 @@ static bool solidAt(float x, float y, bool trees = true, bool debris = true) {
       int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
       if (py >= 8 && py < 56 && px >= 9 && px < 56 && (px < 19 || px >= 45 || py < 15)) return true;
     }
-    // a ruin: what still stands in it blocks (the scattered rubble doesn't)
+    // a ruin is open ground, as the original's tile table has it: the tank drives
+    // over all of it (the debris argument is kept for the callers; nothing in a ruin blocks)
+    (void)debris;
     int pic = typeAt(tx, ty).pic;
-    {
-      int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
-      if (debris && A.tileDebris[pic][py * TILE + px]) return true;
-    }
     // a tree: only its trunk, in the middle of its leaves, stops a tank
     if (!trees) return false;
     for (int k = 0; k < A.nTrees[pic]; k++) {

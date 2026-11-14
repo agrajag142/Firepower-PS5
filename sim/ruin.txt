@@ -1,5 +1,5 @@
 # A building's ruin (battlefield 1: the garage row's first building, square 21,11, shelled from
-# below): driving into what still stands of it stops the tank; its middle is open
+# below): the tank drives right over it, and nothing of the ruin is drawn over the tank
 tap NEXT
 tap FIRE
 hold NONE 2
@@ -9,7 +9,16 @@ hold FIRE 90
 hold NONE 30
 place 1356 815 0
 hold UP 120
-shot ruin_corner
+shot ruin_over
 place 1376 815 0
 hold UP 120
 shot ruin_middle
+# the barracks below it (square 21,13), shelled from above, then driven over
+place 1376 800 8
+hold FIRE 150
+hold NONE 30
+place 1376 800 8
+stick 0 1 60
+shot barracks_on
+stick 0 1 80
+shot barracks_past

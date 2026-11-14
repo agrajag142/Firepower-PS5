@@ -180,6 +180,10 @@ bool assetsLoad(const char *dir) {
     // the trees: each joined shape (anything not sand) with leaves in it is a
     // tree; its middle is the middle of its leaves (its trunk), its size theirs
     A.nTrees[t] = 0;
+    static const uint8_t ruins[] = { 22, 24, 28, 30, 39, 40, 41, 42, 44, 45, 46, 47, 49 };
+    bool isRuin = false;
+    for (uint8_t r : ruins) isRuin |= r == t;
+    if (isRuin) memset(A.tileLeaves[t], 0, sizeof(A.tileLeaves[t]));   // a ruin's green bits aren't a tree
     static int16_t stack[64 * 64];
     static uint8_t seen[64 * 64];
     memset(seen, 0, sizeof(seen));
@@ -202,9 +206,6 @@ bool assetsLoad(const char *dir) {
     // stubs, a building's corners, a depot's frame); the scattered rubble doesn't.
     // (Not the gate's ruin - a way through - nor the headquarters', where the flag lies.)
     memset(A.tileDebris[t], 0, sizeof(A.tileDebris[t]));
-    static const uint8_t ruins[] = { 22, 24, 28, 30, 39, 40, 41, 45, 46, 47, 49 };
-    bool isRuin = false;
-    for (uint8_t r : ruins) isRuin |= r == t;
     if (isRuin) {
       memset(seen, 0, sizeof(seen));
       static int16_t comp[64 * 64];
