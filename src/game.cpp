@@ -6,6 +6,11 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 014: fuel. The tank uses it as it drives; your garage refuels it,
+// and destroying one of the enemy's fuel depots (type 34, its green barrels)
+// fills it up. Empty, it only crawls. A mine for every 5 men rescued (kept
+// for the two-player game, where mines matter).
+//
 // Version 013: an extra tank for every 15 men rescued (as the original).
 //
 // Version 012: the men walk slower, and get out at your first-aid station
@@ -73,7 +78,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V013";
+static const char *VERSION = "V014";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -105,7 +110,12 @@ static const float RESPAWN = 2.5f;         // seconds before the next tank comes
 static const int DECOY_STRENGTH = 40;      // a decoy bunker's inside (the real one's: the original's 75)
 static const float MAN_SPEED = 9.0f;       // Amiga pixels a second (running: x1.5)
 static const float UNLOAD_EVERY = 0.45f;
-static const int MEN_PER_TANK = 15;        // rescued men for an extra tank   // seconds between men getting out at the first-aid station
+static const int MEN_PER_TANK = 15;        // rescued men for an extra tank
+static const int MEN_PER_MINE = 5;         // rescued men for an extra mine
+static const int MINES = 3;                // mines to start with (laid in the two-player game, to come)
+static const float FUEL_RANGE = 9000.0f;   // Amiga pixels a full tank drives (about two minutes)
+static const float FUEL_EMPTY_SPEED = 0.25f;   // how fast it crawls with none
+static const float REFUEL_RATE = 25.0f;    // in your garage: fuel a second (of 100)   // seconds between men getting out at the first-aid station
 static const int TANK_ROOM = 6;            // men your tank can carry
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
@@ -213,6 +223,7 @@ struct Tank {
   float speed = 0;
   float reload = 0;
   int armour = 100;
+  float fuel = 100;
   bool alive = true;
   float down = 0;           // since it was destroyed
 };
@@ -268,7 +279,8 @@ struct Splat { float x, y; };
 static Man men[200];
 static Splat splats[96];
 static int nSplats = 0, aboard = 0, rescued = 0, menLost = 0, menKilled = 0;
-static float unloadT = 0, extraT = 0;   // (extraT: the EXTRA TANK message, while > 0)
+static float unloadT = 0, extraT = 0, fuelT = 0;   // (fuelT: the REFUELLED message)
+static int mines = MINES;   // (extraT: the EXTRA TANK message, while > 0)
 static float aidX = 20, aidY = 32;   // the red cross in the first-aid station's square (from its picture)
 static Heli helis[HELI_MAX];
 static float heliTimer = 0;
@@ -409,6 +421,8 @@ static void startBattle(int m) {
   for (Man &mn : men) mn.live = false;
   unloadT = 0;
   extraT = 0;
+  fuelT = 0;
+  mines = MINES;
   {   // where the red cross is in the first-aid station's picture
     const Pic &p = A.tiles[A.types[24].pic];
     float sxs = 0, sys = 0;
@@ -469,6 +483,10 @@ static void hitSquare(int tx, int ty, float hx, float hy) {
   playSound(SND_BOOM2);
   // the men inside run out: bit 7 of the side byte yours, bit 6 the enemy's; how many: its low 4 bits
   if (t.side & 0xc0) releaseMen(tx, ty, t.side & 0x0f, (t.side & 0x80) ? 0 : 1);
+  if (was == 34 && tank.alive) {   // one of the enemy's fuel depots: yours now
+    tank.fuel = 100;
+    fuelT = 2.5f;
+  }
   destroyed++;
   score += wasTurret ? 250 : (t.side & 0x20) ? 200 : 100;
 }
@@ -493,6 +511,7 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
   }
   tank.heading = wrapAngle(tank.heading);
   if (tank.heading < 0) tank.heading += TWO_PI;
+  if (tank.fuel <= 0) want *= FUEL_EMPTY_SPEED;   // no fuel: it only crawls
   float dv = TANK_ACCEL * dt;
   tank.speed += want > tank.speed + dv ? dv : (want < tank.speed - dv ? -dv : want - tank.speed);
 
@@ -503,10 +522,15 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
     return !solidAt(x - r, y) && !solidAt(x + r, y) && !solidAt(x, y - r) && !solidAt(x, y + r) &&
            !solidAt(x - d, y - d) && !solidAt(x + d, y - d) && !solidAt(x - d, y + d) && !solidAt(x + d, y + d);
   };
+  float ox = tank.x, oy = tank.y;
   if (clear(tank.x + dx, tank.y)) tank.x += dx;
   else tank.speed *= 0.5f;
   if (clear(tank.x, tank.y + dy)) tank.y += dy;
   else tank.speed *= 0.5f;
+  // the fuel it used, for how far it went
+  float moved = sqrtf((tank.x - ox) * (tank.x - ox) + (tank.y - oy) * (tank.y - oy));
+  tank.fuel -= moved / FUEL_RANGE * 100;
+  if (tank.fuel < 0) tank.fuel = 0;
 }
 
 static void fire() {
@@ -808,6 +832,7 @@ static void updateMen(float dt) {
         rescued++;
         score += 200;
         playSound(SND_DRIP, 0.5f);
+        if (rescued % MEN_PER_MINE == 0) mines++;
         if (rescued % MEN_PER_TANK == 0) {   // an extra tank
           tanksLeft++;
           extraT = 3;
@@ -907,6 +932,7 @@ static void updateFlag(float dt) {
     score += 5000 + 1000 * tanksLeft;
     return;
   }
+  tank.fuel = tank.fuel + REFUEL_RATE * dt > 100 ? 100 : tank.fuel + REFUEL_RATE * dt;
   repairT += dt;
   while (repairT >= REPAIR_EVERY) {
     repairT -= REPAIR_EVERY;
@@ -928,6 +954,7 @@ static void updateRespawn(float dt) {
   tank.heading = PI;
   tank.speed = 0;
   tank.armour = 100;
+  tank.fuel = 100;
   tank.alive = true;
   tank.reload = 0.5f;
 }
@@ -1066,6 +1093,22 @@ static void drawHud() {
   if (fillW > 0) pxRect(bx0, by0, bx0 + fillW - 1, by0 + bh - 1, col);
   for (int k = 0; k < tanksLeft - (tank.alive ? 1 : 0) && k < 9; k++)
     drawPic2x(A.tank.pic[0], camX + (440 + k * 56) / (float)S, camY + (FB_H - 95) / (float)S);
+  // fuel, under the armour
+  pxBlend(16, FB_H - 68, 420, FB_H - 28, 0, 0, 0, 0.5f);
+  drawVectorText("FUEL", 70, 685, 1.4f, ink, false);
+  int fy0 = FB_H - 60;
+  pxRect(bx0 - 2, fy0 - 2, bx0 + bw + 1, fy0 + bh + 1, rgba(60, 50, 40));
+  int fuelW = (int)(bw * tank.fuel / 100);
+  uint32_t fcol = tank.fuel > 25 ? rgba(80, 160, 255) : rgba(230, 60, 40);
+  if (fuelW > 0) pxRect(bx0, fy0, bx0 + fuelW - 1, fy0 + bh - 1, fcol);
+  snprintf(buf, sizeof(buf), "MINES %d", mines);
+  drawVectorText(buf, 330, 685, 1.2f, dim, false);
+  if (tank.alive && tank.fuel < 15 && fmodf(clockT, 0.8f) < 0.5f)
+    drawVectorText(tank.fuel <= 0 ? "OUT OF FUEL - BACK TO YOUR GARAGE" : "LOW FUEL", 640, 200, 2.2f, rgb565(255, 90, 60), true);
+  if (fuelT > 0) {
+    fuelT -= 1 / 60.0f;
+    drawVectorText("REFUELLED", 640, 200, 2.4f, rgb565(120, 190, 255), true);
+  }
   if (extraT > 0) {
     extraT -= 1 / 60.0f;
     if (fmodf(extraT, 0.5f) < 0.35f) drawVectorText("EXTRA TANK!", 640, 160, 3.0f, rgb565(255, 230, 90), true);
@@ -1254,13 +1297,13 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   for (Heli &h : helis)
     if (h.live) hd = sqrtf((h.x - tank.x) * (h.x - tank.x) + (h.y - tank.y) * (h.y - tank.y));
   for (Missile &mm : missiles) nm += mm.live && mm.air;
-  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d",
+  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d fuel %.0f mines %d",
            tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft, hd, nm,
            hqSquare / MAPN, hqSquare % MAPN, (int)flagState, (int)state, [] {
              int n = 0;
              for (Man &m : men) n += m.live;
              return n;
-           }(), aboard, rescued, menKilled, menLost);
+           }(), aboard, rescued, menKilled, menLost, tank.fuel, mines);
 }
 
 const char *gameDebug() { return debugText; }
@@ -1288,3 +1331,4 @@ void gameDebugMan(float x, float y, int side) {
       return;
     }
 }
+void gameDebugFuel(float f) { tank.fuel = f; }

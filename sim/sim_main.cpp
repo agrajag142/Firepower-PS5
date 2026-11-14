@@ -9,6 +9,7 @@
 //                shot NAME             (out/NAME.ppm, made a PNG by build.sh)
 //                wav SECONDS NAME      the sound for the next SECONDS: out/NAME.wav
 //                man X Y SIDE          a man at X,Y (0 yours, 1 the enemy's)
+//                fuel N                the tank's fuel (0..100)
 //                god on|off            the tank can't be hurt (to test what's past the turrets)
 //                seed N                (before anything else)
 //                # comment
@@ -117,6 +118,8 @@ int main(int argc, char **argv) {
       int side = 0;
       sscanf(line, "%*s %f %f %d", &x, &y, &side);
       gameDebugMan(x, y, side);
+    } else if (!strcmp(cmd, "fuel")) {     // fuel N: the tank's fuel (0..100)
+      gameDebugFuel((float)atof(a));
     } else if (!strcmp(cmd, "god")) {      // god on|off: the tank can't be hurt
       gameDebugGod(!strcmp(a, "on"));
     } else if (!strcmp(cmd, "shot")) {
