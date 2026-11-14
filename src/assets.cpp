@@ -178,6 +178,9 @@ bool assetsLoad(const char *dir) {
       }
       if (n >= 30 && A.nTrees[t] < 4) A.trees[t][A.nTrees[t]++] = { sx / n + 0.5f, sy / n + 0.5f, sqrtf(n / 3.14159f) };
     }
+    // over a tank under it, all of a tree is drawn: the leaves, their black, and its
+    // shadow (which falls on the tank too)
+    if (A.nTrees[t]) memcpy(A.tileLeaves[t], A.tileSolid[t], sizeof(A.tileLeaves[t]));
     Pic &src = tiles.pic[t], &dst = A.tiles[t];
     dst.w = dst.h = 128;
     dst.px = (uint32_t *)bigAlloc(128 * 128 * 4);

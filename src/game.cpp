@@ -6,6 +6,8 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 004: all of a tree over the tank, its black too.
+//
 // Version 003: trees - the tank drives under their branches (the leaves drawn
 // over it) but not through their trunks.
 //
@@ -29,7 +31,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V003";
+static const char *VERSION = "V004";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down

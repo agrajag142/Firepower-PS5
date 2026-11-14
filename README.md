@@ -10,6 +10,10 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 004
+
+- All of a tree is drawn over a tank under it (its black parts were see-through)
+
 ## Version 003
 
 - Trees: the tank drives under their branches (the leaves are drawn over it)
