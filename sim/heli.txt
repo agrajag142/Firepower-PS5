@@ -7,7 +7,7 @@ hold NONE 1500
 shot h0
 hold NONE 200
 shot h1
-hold RIGHT+FIRE 900
+hold RIGHT+FIRE 2400
 shot h2
 hold NONE 20
 shot h3
