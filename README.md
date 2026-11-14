@@ -10,6 +10,10 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 019
+
+- Square reverses: the tank backs straight up, the way it faces
+
 ## Version 018
 
 - The tank moves exactly the way its picture faces (one of the original's 16
@@ -161,6 +165,7 @@ the pick screen and its tanks, then two players split-screen.
 | --- | --- |
 | Left stick | point where to go: the tank turns that way and drives |
 | D-pad | the same, 8 ways: the tank turns the way pressed and drives |
+| Square | reverse (straight back) |
 | Cross, R1 or R2 | fire |
 | Options or the touchpad | the full map (Circle there: back to the title screen) |
 | Triangle (title screen) | the next battlefield |

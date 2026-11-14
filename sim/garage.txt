@@ -1,8 +1,8 @@
 # The garage's three walls: from the start (facing out, south) the tank can't get out
-# north, left or right - only south, out of the bottom
+# reversing (north), left or right - only south, out of the bottom
 tap FIRE
 hold NONE 2
-hold UP 90
+hold REVERSE 90
 shot back
 place 1440 736 8
 hold LEFT 90
@@ -17,3 +17,7 @@ shot out
 place 1600 875 4
 hold RIGHT 60
 shot straight
+# and reverses straight back (Square)
+place 1600 875 4
+hold REVERSE 60
+shot reverse

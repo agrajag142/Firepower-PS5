@@ -33,6 +33,7 @@ static uint32_t parseButtons(const char *s) {
     else if (!strcmp(t, "MAP")) b |= BTN_MAP;
     else if (!strcmp(t, "NEXT")) b |= BTN_NEXT;
     else if (!strcmp(t, "BACK")) b |= BTN_BACK;
+    else if (!strcmp(t, "REVERSE")) b |= BTN_REVERSE;
   }
   return b;
 }

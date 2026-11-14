@@ -209,6 +209,7 @@ static uint32_t gameButtons() {
   if (raw & (RAW_OPTIONS | RAW_TOUCHPAD)) b |= BTN_MAP;
   if (raw & RAW_TRIANGLE) b |= BTN_NEXT;
   if (raw & RAW_CIRCLE) b |= BTN_BACK;
+  if (raw & RAW_SQUARE) b |= BTN_REVERSE;
   return b;
 }
 

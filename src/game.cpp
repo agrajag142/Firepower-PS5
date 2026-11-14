@@ -6,6 +6,8 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 019: Square reverses (straight back, as it faces).
+//
 // Version 018: the tank moves exactly the way its picture faces (one of the
 // original's 16 headings), so it no longer slides off a straight line; the
 // D-pad steers as the stick does (8 ways).
@@ -91,7 +93,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V018";
+static const char *VERSION = "V019";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -522,7 +524,10 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
     sy = (held & BTN_DOWN ? 1.0f : 0.0f) - (held & BTN_UP ? 1.0f : 0.0f);
   }
   float mag = sqrtf(sx * sx + sy * sy);
-  if (mag > 0.35f) {
+  if (held & BTN_REVERSE) {
+    // Square: straight back, the way it faces
+    want = -TANK_REVERSE;
+  } else if (mag > 0.35f) {
     // the stick: point it where to go; the tank turns that way and drives once it faces it
     float target = atan2f(sx, -sy);
     float diff = wrapAngle(target - tank.heading);

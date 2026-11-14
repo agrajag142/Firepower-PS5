@@ -12,6 +12,7 @@ enum : uint32_t {
   BTN_MAP = 0x20,     // Options / touchpad: the full map
   BTN_NEXT = 0x40,    // Triangle: the next battlefield (title screen)
   BTN_BACK = 0x80,    // Circle: back to the title screen (with the map open)
+  BTN_REVERSE = 0x100,   // Square: reverse (straight back)
 };
 
 // dir: where the game's files are ("/app0/assets/fp/" on the PS5)
