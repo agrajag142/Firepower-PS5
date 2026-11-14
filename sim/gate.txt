@@ -13,3 +13,6 @@ stick 1 0 120
 shot through
 hold NONE 90
 shot closed
+stick 1 0 60
+hold NONE 120
+shot outside

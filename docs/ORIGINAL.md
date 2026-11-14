@@ -67,10 +67,11 @@ map at `B_15d0`). Each byte is a tile type (0-92).
 | byte | |
 | --- | --- |
 | 0-3 | pointer to the tile's picture (28-byte records from `B_5770`; 27 of them are copied to `B_6cea`.. by `sub_0dad0` for the enemy's versions) |
-| 4 | the type it becomes when destroyed |
+| 4 | the type it becomes when destroyed (plain walls too, though they aren't marked destructible: 42 -> 51 -> 56, a gap) |
 | 5 | 1: destructible |
 | 6 | flags: bit 3 your base (type 20), bit 2 the enemy's (type 32) |
 | 7 | flags: bit 6 a gate of one side (type 44), bit 7 the other's (type 67): `sub_03680` swaps in the linked type (byte 9, the open gate) when that side's tank is on the gate square or the square before it in its row; bits 0, 1 (sets $88 in an object: not yet known) |
+| 7 (more) | bit 2: one of your side's turrets, bit 3 one of the enemy's (corner posts 41/43/48/50 and 64/66/71/73, bunkers 27/39, 85/87). `sub_03680` (run for each square as it's drawn: so only turrets on screen act) calls `sub_020fe`, which turns the gun one of 8 headings towards the tank (its heading kept in the low 3 bits of `B_25d0`) and says fire when it's lined up; `sub_0228e` fires, and a missile's end sets bit 3 of the square again (one missile at a time). `sub_01f82` draws the gun with its top left at the square + the tables at `D_0eaa`/`D_0eba` (x 25 26 26 27 27 19 17 19, y 16 20 27 27 27 27 27 20). Bits 0 and 1: the helipads (types 25, 37) |
 | 9 | the other square of a two-square thing |
 | 10 | movement: `& $78` copied into the second map `B_25d0` (bit 7 there: something standing on the square) |
 | 13 | strength |

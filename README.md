@@ -10,6 +10,19 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 007
+
+- The turrets are where the original has them: on the enemy's corner posts and
+  bunkers (tiles with bit 3 of their second flags), the gun drawn where the
+  original draws each of its 8 headings. As the original: a turret only acts
+  while it would be on the Amiga's screen round your tank, turns 45 degrees a
+  step, and fires when lined up, one missile at a time. Your side's corner
+  posts have their guns too (they'll fire once there are enemy tanks)
+- The big round pads (type 37) are the enemy's helipads again: the helicopters
+  take off from them
+- Plain walls can be shot open (about seven shells): worn into the original's
+  damaged wall, then a gap
+
 ## Version 006
 
 - The enemy's helicopters (the Heli file: 16 headings, the turning rotor, the
@@ -114,6 +127,7 @@ firepower/build.sh sim firepower/sim/trees.txt   # under the trees, up to their 
 firepower/build.sh sim firepower/sim/turret.txt  # a turret fires at the tank; the tank destroys it
 firepower/build.sh sim firepower/sim/gameover.txt   # all three tanks lost
 firepower/build.sh sim firepower/sim/heli.txt    # a helicopter attacks; the tank shoots it down
+firepower/build.sh sim firepower/sim/wall.txt    # shooting a wall open
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

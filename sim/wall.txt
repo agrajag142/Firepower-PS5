@@ -1,0 +1,13 @@
+# Shooting a plain wall open (battlefield 1: the wall above the garages, from outside the compound)
+tap FIRE
+hold NONE 2
+place 1376 590 8
+shot w0
+hold FIRE 70
+hold NONE 30
+shot w1
+hold FIRE 110
+hold NONE 40
+shot w2
+hold UP 90
+shot w3
