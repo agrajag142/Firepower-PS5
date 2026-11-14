@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 026
+
+- With your tank full (6 aboard), your other men keep clear of it and wait,
+  instead of crowding round it and being run over
+- CLASSIC in the settings menu (off or on, kept for next time): for choosing
+  the original game as it was or the one with the new features. For now it
+  picks the title: off shows the new title picture (`assets/title_hd.png`),
+  on the original's
+
 ## Version 025
 
 - Options opens the settings menu (on the title screen or in the battle, which
@@ -261,6 +270,7 @@ firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard
 firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, the garage
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
+firepower/build.sh sim firepower/sim/full.txt    # the tank full: the other men wait clear of it
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

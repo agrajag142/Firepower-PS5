@@ -52,6 +52,7 @@ struct Assets {
   char error[160] = "";
   uint32_t pal[32];           // the battle's colours (gr/oneplayer's palette)
   Pic title;                  // gr/fp.title
+  Pic titleHd;                // assets/title_hd.png: the new title (w 0 if it's missing)
   Pic onePlayer;              // gr/oneplayer: the one-player screen (its panel on the right)
   Pic tiles[50];              // gr/tiles, at 2x (128 x 128), ready to copy
   Pic tilesEnemy[50];         // the same in the enemy's colours

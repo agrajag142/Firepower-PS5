@@ -8,6 +8,37 @@
 #include <string.h>
 #include <sys/mman.h>
 
+// stb_image (public domain, for the new title's PNG), its memory straight from the system
+static void *stbMalloc(size_t n) {
+  void *p = mmap(nullptr, n + 16, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+  if (p == MAP_FAILED) return nullptr;
+  *(size_t *)p = n + 16;
+  return (char *)p + 16;
+}
+static void stbFree(void *p) {
+  if (p) munmap((char *)p - 16, *(size_t *)((char *)p - 16));
+}
+static void *stbRealloc(void *p, size_t n) {
+  void *q = stbMalloc(n);
+  if (q && p) {
+    size_t old = *(size_t *)((char *)p - 16) - 16;
+    memcpy(q, p, old < n ? old : n);
+    stbFree(p);
+  }
+  return q;
+}
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#define STBI_NO_THREAD_LOCALS
+#define STBI_NO_SIMD
+#define STBI_NO_HDR
+#define STBI_NO_LINEAR
+#define STBI_MALLOC(n) stbMalloc(n)
+#define STBI_FREE(p) stbFree(p)
+#define STBI_REALLOC(p, n) stbRealloc(p, n)
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 Assets A;
 
 void *bigAlloc(size_t bytes) {
@@ -129,6 +160,51 @@ static bool loadSound(const char *name, Sound &s, int period) {
   return true;
 }
 
+// The new title (assets/title_hd.png, beside fp/): scaled to fit 1800 x 900 pixels
+// (each pixel the average of the picture's under it). Missing: the original's title only.
+static void loadTitleHd() {
+  char path[256];
+  snprintf(path, sizeof(path), "%s../title_hd.png", gDir);
+  FILE *f = fopen(path, "rb");
+  if (!f) return;
+  fseek(f, 0, SEEK_END);
+  long n = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  uint8_t *buf = n > 0 ? (uint8_t *)stbMalloc((size_t)n) : nullptr;
+  bool ok = buf && fread(buf, 1, (size_t)n, f) == (size_t)n;
+  fclose(f);
+  int w = 0, h = 0, ch = 0;
+  uint8_t *img = ok ? stbi_load_from_memory(buf, (int)n, &w, &h, &ch, 3) : nullptr;
+  stbFree(buf);
+  if (!img) return;
+  float k = fminf(fminf(1800.0f / w, 900.0f / h), 1.0f);
+  int ow = (int)(w * k), oh = (int)(h * k);
+  uint32_t *px = (uint32_t *)bigAlloc((size_t)ow * oh * 4);
+  if (px) {
+    for (int y = 0; y < oh; y++) {
+      int y0 = (int)(y / k), y1 = (int)((y + 1) / k);
+      if (y1 > h) y1 = h;
+      if (y1 <= y0) y1 = y0 + 1;
+      for (int x = 0; x < ow; x++) {
+        int x0 = (int)(x / k), x1 = (int)((x + 1) / k);
+        if (x1 > w) x1 = w;
+        if (x1 <= x0) x1 = x0 + 1;
+        unsigned r = 0, g = 0, b = 0, c = 0;
+        for (int yy = y0; yy < y1; yy++)
+          for (int xx = x0; xx < x1; xx++) {
+            const uint8_t *q = img + ((size_t)yy * w + xx) * 3;
+            r += q[0]; g += q[1]; b += q[2]; c++;
+          }
+        px[(size_t)y * ow + x] = 0xff000000u | (b / c) << 16 | (g / c) << 8 | (r / c);
+      }
+    }
+    A.titleHd.w = ow;
+    A.titleHd.h = oh;
+    A.titleHd.px = px;
+  }
+  stbi_image_free(img);
+}
+
 bool assetsLoad(const char *dir) {
   gDir = dir;
   A.ok = false;
@@ -140,6 +216,7 @@ bool assetsLoad(const char *dir) {
   munmap(op, (size_t)len);
 
   if (!loadScreen("gr/fp.title", A.title)) return false;
+  loadTitleHd();   // (optional)
   if (!loadScreen("gr/oneplayer", A.onePlayer)) return false;
   static PicSet tiles, tilesE;
   if (!loadSet("gr/tiles", tiles, true) || tiles.n < 50) return false;

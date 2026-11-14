@@ -1,0 +1,18 @@
+# The tank full (6 aboard): your other men wait clear of it, not crowding round it
+tap NEXT
+shot title_new
+tap FIRE
+hold NONE 2
+god on
+place 1250 950 0
+man 1280 950 0
+man 1220 950 0
+man 1250 980 0
+man 1250 920 0
+man 1280 980 0
+man 1220 920 0
+man 1290 930 0
+man 1210 970 0
+man 1270 990 0
+hold NONE 600
+shot full_wait

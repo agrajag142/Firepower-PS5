@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V025";
+static const char *VERSION = "V026";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -158,6 +158,7 @@ static const float FUEL_RANGE = 9000.0f;   // Amiga pixels a full tank drives (a
 static const float FUEL_EMPTY_SPEED = 0.25f;   // how fast it crawls with none
 static const float REFUEL_RATE = 25.0f;    // in your garage: fuel a second (of 100)   // seconds between men getting out at the first-aid station
 static const int TANK_ROOM = 6;            // men your tank can carry
+static const float MEN_KEEP_BACK = 60;     // with it full, your men wait this far from it (pixels)
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
 static const float HELI_EVERY = 30.0f;     // then one every this many seconds (+ up to HELI_EVERY_MORE)
@@ -188,6 +189,7 @@ void micromod2_get_audio(short *output_buffer, long count);
 static bool tuneReady[TUNES] = { false, false };
 static float tuneGain[TUNES] = { 0, 0 };            // (the sound thread's)
 static std::atomic<bool> musicOn{true};
+static bool classic = false;   // CLASSIC in the settings: the original game as it was (on) or with the new features (off)
 static std::atomic<int> musicVol{MUSIC_VOLUME_DEFAULT}, sfxVol{SFX_VOLUME_DEFAULT};   // percent
 static std::atomic<int> tuneWanted{0};              // 0 the title's, 1 the battle's
 static std::atomic<bool> tuneFromStart[TUNES];      // (start it again from the top as it comes in)
@@ -971,6 +973,11 @@ static void updateMen(float dt) {
       m.dx = -tx / d;
       m.dy = -ty / d;
       speed *= 1.5f;
+    } else if (tank.alive && m.side == 0 && aboard >= TANK_ROOM && d < MEN_KEEP_BACK) {   // full: yours keep clear of it
+      m.dx = -tx / d;
+      m.dy = -ty / d;
+    } else if (tank.alive && m.side == 0 && aboard >= TANK_ROOM && d < MEN_KEEP_BACK + 30) {   // and wait there
+      speed = 0;
     } else if (tank.alive && m.side == 0 && d < 160 && !moving) {   // yours run to it
       m.dx = tx / d;
       m.dy = ty / d;
@@ -1309,6 +1316,11 @@ static void drawTitle(float dt) {
     drawVectorText("(OR COPY ASSETS/FP OVER FTP INTO THE APP'S ASSETS FOLDER)", 640, 505, 1.4f, rgb565(200, 200, 200), false);
     return;
   }
+  if (!classic && A.titleHd.w) {   // the new title (CLASSIC off)
+    const Pic &t = A.titleHd;
+    int ox = (FB_W - t.w) / 2, oy = 20;
+    for (int y = 0; y < t.h; y++) memcpy(g_frame + (size_t)(oy + y) * FB_W + ox, t.px + (size_t)y * t.w, (size_t)t.w * 4);
+  } else {
   // the original title picture at 4x
   const Pic &t = A.title;
   int k = 4, ox = (FB_W - t.w * k) / 2, oy = 30;
@@ -1316,6 +1328,7 @@ static void drawTitle(float dt) {
     uint32_t *row = g_frame + (size_t)(oy + y) * FB_W + ox;
     const uint32_t *src = t.px + (y / k) * t.w;
     for (int x = 0; x < t.w * k; x++) row[x] = src[x / k];
+  }
   }
   if (fmodf(titleT, 1.0f) < 0.7f) drawVectorText("PRESS X TO START", 640, 655, 2.6f, rgb565(255, 220, 120), true);
   char buf[64];
@@ -1366,7 +1379,7 @@ static void drawRoofs() {
 #define FP_DATA_DIR "/download0/firepower"   // (the title's own storage: the rest of /data can't be written)
 #define FP_SETTINGS_FILE FP_DATA_DIR "/settings.bin"
 #endif
-enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
+enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
 static int menuSel = 0;
 static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
 static bool quitAsked = false;      // the platform closes the app
@@ -1378,11 +1391,12 @@ static void loadSettings() {
   if (!path) return;
   FILE *f = fopen(path, "rb");
   if (!f) return;
-  uint8_t b[3];
-  if (fread(b, 1, 3, f) == 3) {
+  uint8_t b[4] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0 };
+  if (fread(b, 1, 4, f) >= 3) {
     musicOn.store(b[0] != 0);
     musicVol.store(b[1] > 100 ? 100 : b[1]);
     sfxVol.store(b[2] > 100 ? 100 : b[2]);
+    classic = b[3] != 0;
   }
   fclose(f);
 }
@@ -1394,8 +1408,8 @@ static void saveSettings() {
 #endif
   FILE *f = fopen(path, "wb");
   if (!f) return;
-  uint8_t b[3] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load() };
-  fwrite(b, 1, 3, f);
+  uint8_t b[4] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic };
+  fwrite(b, 1, 4, f);
   fclose(f);
 }
 
@@ -1438,6 +1452,8 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
   bool go = (pressed & BTN_FIRE) != 0;
   if (menuSel == MI_MUSIC && (go || side)) {
     musicOn.store(!musicOn.load());
+  } else if (menuSel == MI_CLASSIC && (go || side)) {
+    classic = !classic;
   } else if ((menuSel == MI_MUSIC_VOL || menuSel == MI_SFX_VOL) && side) {
     std::atomic<int> &v = menuSel == MI_MUSIC_VOL ? musicVol : sfxVol;
     int nv = v.load() + side * VOLUME_STEP;
@@ -1462,7 +1478,7 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
 static void drawMenu() {
   float cx = state == ST_PLAY ? PLAY_CX : 640;
   blendRect(0, 0, (int)(cx * 2), SCREEN_H - 1, 0, 0, 0, 0.55f);
-  int x0 = (int)cx - 300, x1 = (int)cx + 300, y0 = 130, y1 = 600;
+  int x0 = (int)cx - 300, x1 = (int)cx + 300, y0 = 100, y1 = y0 + 520;
   fillRect(x0, y0, x1, y1, rgb565(40, 34, 24));
   drawRectOutline(x0, y0, x1, y1, rgb565(200, 140, 60), 3);
   drawVectorText("SETTINGS", cx, y0 + 40, 3.6f, rgb565(230, 160, 70), true);
@@ -1474,14 +1490,14 @@ static void drawMenu() {
     bool sel = i == menuSel;
     if (sel) fillRect(x0 + 20, y - 22, x1 - 20, y + 22, rgb565(90, 66, 30));
     uint16_t c = sel ? rgb565(255, 225, 120) : rgb565(225, 220, 205);
-    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
+    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
                         i == MI_RESUME ? "RESUME" :
                         i == MI_TITLE ? (quitArmed == i ? "X AGAIN TO QUIT TO TITLE" : "QUIT TO TITLE") :
                                         (quitArmed == i ? "X AGAIN TO QUIT THE GAME" : "QUIT GAME");
-    if (i <= MI_SFX_VOL) {
+    if (i <= MI_CLASSIC) {
       drawVectorText(label, x0 + 44 + vectorTextWidth(label, 2.4f) / 2, y, 2.4f, c, true);
-      if (i == MI_MUSIC) {
-        bool on = musicOn.load();
+      if (i == MI_MUSIC || i == MI_CLASSIC) {
+        bool on = i == MI_MUSIC ? musicOn.load() : classic;
         const char *v = on ? "ON" : "OFF";
         drawVectorText(v, x1 - 50 - vectorTextWidth(v, 2.4f) / 2, y, 2.4f, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
       } else {   // a bar of 20 steps and the number
