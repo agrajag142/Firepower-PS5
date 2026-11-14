@@ -10,6 +10,20 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 011: the men
+
+- Destroying a building or post lets out the men inside it, as the original:
+  how many is in its tile type (5 from a building, 15 from a big one, 2 from
+  a post), brown ones yours and green ones the enemy's (the Men file's little
+  soldiers, facing the way they run)
+- The enemy's men run from your tank; run them over (Splat, and the blood
+  stays: 50 points each)
+- Your men run to your tank when it's stopped and climb aboard (6 at most);
+  bring them home into your garage and they're rescued (200 each). Drive into
+  them and they're lost; lose the tank and so are the men aboard
+- The final report: INFLICTED (destroyed, helicopters, men), RESCUED,
+  CASUALTIES (tanks, men)
+
 ## Version 010
 
 - The enemy's helicopters in the enemy's colours (green), as the original's
@@ -94,8 +108,7 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 - The original explosions and sounds (TankBlast, Boom2, Drip)
 - A mini map, and the full map (Options)
 
-Still to come (from the disassembly, in this order): the men to rescue and
-run over, the flags and the win,
+Still to come (from the disassembly, in this order): the flags and the win,
 the pick screen and its tanks, then two players split-screen.
 
 ## Controls
@@ -153,6 +166,7 @@ firepower/build.sh sim firepower/sim/gameover.txt   # all three tanks lost
 firepower/build.sh sim firepower/sim/heli.txt    # a helicopter attacks; the tank shoots it down
 firepower/build.sh sim firepower/sim/wall.txt    # shooting a wall open
 firepower/build.sh sim firepower/sim/flag.txt    # the bunkers, the HQ, the flag, home: won
+firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard, rescued; run over
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

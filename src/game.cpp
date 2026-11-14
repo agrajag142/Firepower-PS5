@@ -6,6 +6,13 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 011: the men. Destroying a building or post lets out the men in it
+// (the low 4 bits of its side byte; bit 7: yours, brown - bit 6: the enemy's,
+// green - as the original's square-destroyed code, sub_02566). Running over a
+// man kills him (Splat, the blood stays); stopping by one of yours takes him
+// aboard (as the original's sub_044ae, with room in the tank), and your garage
+// is where they're rescued.
+//
 // Version 010: the enemy's helicopters in the enemy's colours (green).
 //
 // Version 009: the original's one-player battle. One of the enemy's big
@@ -60,7 +67,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V010";
+static const char *VERSION = "V011";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -90,6 +97,8 @@ static const int MISSILE_DAMAGE = 12;      // of your tank's 100 armour
 static const int TANKS = 3;                // tanks you have
 static const float RESPAWN = 2.5f;         // seconds before the next tank comes out
 static const int DECOY_STRENGTH = 40;      // a decoy bunker's inside (the real one's: the original's 75)
+static const float MAN_SPEED = 14.0f;      // Amiga pixels a second (running: x1.7)
+static const int TANK_ROOM = 6;            // men your tank can carry
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
 static const float HELI_EVERY = 30.0f;     // then one every this many seconds (+ up to 15)
@@ -240,6 +249,15 @@ static int nTurrets = 0;
 static Turret ours[256];   // your side's turrets (bit 2): drawn, for now (they'll fire at the enemy's tanks)
 static int nOurs = 0;
 static Missile missiles[48];
+struct Man {
+  bool live = false;
+  float x, y, dx, dy, turn;
+  int side;                 // 0 yours (brown), 1 the enemy's (green): the Men file's pictures 0/2 and 1/3
+};
+struct Splat { float x, y; };
+static Man men[200];
+static Splat splats[96];
+static int nSplats = 0, aboard = 0, rescued = 0, menLost = 0, menKilled = 0;
 static Heli helis[HELI_MAX];
 static float heliTimer = 0;
 // the flag: in the enemy's headquarters, lying loose, or on your tank
@@ -262,7 +280,7 @@ static State state = ST_TITLE;
 static float overT = 0;   // on the game over screen
 static bool mapOpen = false;
 static float titleT = 0;
-static char debugText[160];
+static char debugText[256];
 
 static inline int roundi(float v) { return (int)floorf(v + 0.5f); }
 // An angle into -PI..PI
@@ -376,6 +394,8 @@ static void startBattle(int m) {
   for (Missile &mm : missiles) mm.live = false;
   for (Heli &h : helis) h.live = false;
   heliTimer = HELI_FIRST;
+  for (Man &mn : men) mn.live = false;
+  nSplats = aboard = rescued = menLost = menKilled = 0;
   helisDown = 0;
   for (Shell &s : shells) s.live = false;
   for (Boom &b : booms) b.live = false;
@@ -384,6 +404,8 @@ static void startBattle(int m) {
   mapOpen = false;
   state = ST_PLAY;
 }
+
+static void releaseMen(int tx, int ty, int n, int side);   // (the men, below)
 
 // A shell (or anything) hits square tx,ty
 static void hitSquare(int tx, int ty, float hx, float hy) {
@@ -422,6 +444,8 @@ static void hitSquare(int tx, int ty, float hx, float hy) {
   }
   addBoom(tx * TILE + TILE / 2.0f, ty * TILE + TILE / 2.0f, true);
   playSound(SND_BOOM2);
+  // the men inside run out: bit 7 of the side byte yours, bit 6 the enemy's; how many: its low 4 bits
+  if (t.side & 0xc0) releaseMen(tx, ty, t.side & 0x0f, (t.side & 0x80) ? 0 : 1);
   destroyed++;
   score += wasTurret ? 250 : (t.side & 0x20) ? 200 : 100;
 }
@@ -524,6 +548,8 @@ static void tankHit(int damage, float x, float y) {
     tank.down = 0;
     tank.speed = 0;
     tanksLeft--;
+    menLost += aboard;   // the men aboard go with it
+    aboard = 0;
     if (flagState == FLAG_CARRIED) {   // it drops where the tank was
       flagState = FLAG_LOOSE;
       flagX = tank.x;
@@ -718,6 +744,78 @@ static bool shellHitsHeli(float x, float y) {
   return false;
 }
 
+// ============================================================ the men
+static void manHeading(Man &m, float a) {
+  m.dx = sinf(a);
+  m.dy = -cosf(a);
+}
+
+static void releaseMen(int tx, int ty, int n, int side) {
+  for (int k = 0; k < n; k++)
+    for (Man &m : men)
+      if (!m.live) {
+        m.live = true;
+        m.side = side;
+        m.x = tx * TILE + 16 + rnd() * 32;
+        m.y = ty * TILE + 16 + rnd() * 32;
+        manHeading(m, rnd() * TWO_PI);
+        m.turn = 0.5f + rnd() * 2;
+        break;
+      }
+}
+
+static void splatAt(float x, float y) {
+  splats[nSplats % 96] = { x, y };
+  nSplats++;
+  playSound(SND_SPLAT);
+}
+
+static void updateMen(float dt) {
+  bool moving = fabsf(tank.speed) > 8;
+  for (Man &m : men) {
+    if (!m.live) continue;
+    float tx = tank.x - m.x, ty = tank.y - m.y, d = sqrtf(tx * tx + ty * ty) + 0.01f;
+    float speed = MAN_SPEED;
+    m.turn -= dt;
+    if (tank.alive && m.side == 1 && d < 120) {         // the enemy's run from your tank
+      m.dx = -tx / d;
+      m.dy = -ty / d;
+      speed *= 1.7f;
+    } else if (tank.alive && m.side == 0 && d < 160 && !moving) {   // yours run to it
+      m.dx = tx / d;
+      m.dy = ty / d;
+      speed *= 1.7f;
+    } else if (m.turn <= 0) {                           // or wander
+      manHeading(m, rnd() * TWO_PI);
+      m.turn = 1 + rnd() * 2.5f;
+    }
+    float nx = m.x + m.dx * speed * dt, ny = m.y + m.dy * speed * dt;
+    if (!solidAt(nx, ny, false) && nx > 2 && ny > 2 && nx < WORLD - 2 && ny < WORLD - 2) {
+      m.x = nx;
+      m.y = ny;
+    } else {
+      manHeading(m, rnd() * TWO_PI);
+      m.turn = 0.4f;
+    }
+    // your tank: the enemy's men are run over; yours too if it's moving - stopped, it takes them aboard
+    if (!tank.alive || d > 11) continue;
+    if (m.side == 0 && !moving && aboard < TANK_ROOM) {
+      aboard++;
+      m.live = false;
+      playSound(SND_DRIP, 0.7f);
+    } else if (m.side == 1 || moving) {
+      splatAt(m.x, m.y);
+      m.live = false;
+      if (m.side == 1) {
+        menKilled++;
+        score += 50;
+      } else {
+        menLost++;
+      }
+    }
+  }
+}
+
 // After a tank is lost: the next comes out of the garage, or it's over
 // The flag: picked up by driving over it; brought home to your base, the battle is won.
 // Without it, your base repairs your tank.
@@ -733,6 +831,12 @@ static void updateFlag(float dt) {
   int tx = (int)floorf(tank.x / TILE), ty = (int)floorf(tank.y / TILE);
   bool home = tx >= 0 && ty >= 0 && tx < MAPN && ty < MAPN && (typeAt(tx, ty).flagsA & 0x08);
   if (!home) return;
+  if (aboard) {   // the men you carry are rescued
+    rescued += aboard;
+    score += 200 * aboard;
+    aboard = 0;
+    playSound(SND_DRIP);
+  }
   if (flagState == FLAG_CARRIED) {
     state = ST_WON;
     overT = 0;
@@ -898,6 +1002,10 @@ static void drawHud() {
   if (fillW > 0) pxRect(bx0, by0, bx0 + fillW - 1, by0 + bh - 1, col);
   for (int k = 0; k < tanksLeft - (tank.alive ? 1 : 0) && k < 9; k++)
     drawPic2x(A.tank.pic[0], camX + (440 + k * 56) / (float)S, camY + (FB_H - 95) / (float)S);
+  if (aboard) {
+    snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d", aboard, TANK_ROOM);
+    drawVectorText(buf, 160, 615, 1.4f, rgb565(255, 230, 90), false);
+  }
 }
 
 static void drawOver(float dt) {
@@ -913,12 +1021,12 @@ static void drawOver(float dt) {
   char buf[64];
   snprintf(buf, sizeof(buf), "SCORE %d", score);
   drawVectorText(buf, 640, 390, 2.2f, rgb565(255, 255, 255), true);
-  snprintf(buf, sizeof(buf), "INFLICTED: %d DESTROYED", destroyed);
+  snprintf(buf, sizeof(buf), "INFLICTED: %d DESTROYED  HELI %d  MEN %d", destroyed, helisDown, menKilled);
   drawVectorText(buf, 640, 440, 1.8f, rgb565(220, 220, 220), false);
-  snprintf(buf, sizeof(buf), "HELICOPTERS DOWNED: %d", helisDown);
-  drawVectorText(buf, 640, 520, 1.8f, rgb565(220, 220, 220), false);
-  snprintf(buf, sizeof(buf), "CASUALTIES: TANKS %d", tanksLost);
+  snprintf(buf, sizeof(buf), "RESCUED: %d MEN", rescued);
   drawVectorText(buf, 640, 480, 1.8f, rgb565(220, 220, 220), false);
+  snprintf(buf, sizeof(buf), "CASUALTIES: TANKS %d  MEN %d", tanksLost, menLost);
+  drawVectorText(buf, 640, 520, 1.8f, rgb565(220, 220, 220), false);
   if (overT > 1.0f && fmodf(overT, 1.0f) < 0.7f) drawVectorText("PRESS X", 640, 600, 2.4f, rgb565(255, 220, 120), true);
 }
 
@@ -1024,6 +1132,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     updateHelis(dt);
     moveMissiles(dt);
     updateRespawn(dt);
+    updateMen(dt);
     updateFlag(dt);
   }
 
@@ -1040,6 +1149,10 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     if (isTurret(turrets[k].i)) drawGun(turrets[k].i, turrets[k].heading);
   for (int k = 0; k < nOurs; k++)
     if (A.types[field[ours[k].i]].flagsB & 0x04) drawGun(ours[k].i, ours[k].heading);
+  for (int k = 0; k < (nSplats < 96 ? nSplats : 96); k++)
+    if (A.men.n > 4) drawPic2x(A.men.pic[4], splats[k].x, splats[k].y);
+  for (Man &m : men)
+    if (m.live && A.men.n > 3) drawPic2x(A.men.pic[m.side + (m.dx < 0 ? 2 : 0)], m.x, m.y);
   for (Shell &s : shells)
     if (s.live) drawPic2x(A.shell.pic[s.frame], s.x, s.y);
   for (Missile &mm : missiles)
@@ -1072,9 +1185,13 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   for (Heli &h : helis)
     if (h.live) hd = sqrtf((h.x - tank.x) * (h.x - tank.x) + (h.y - tank.y) * (h.y - tank.y));
   for (Missile &mm : missiles) nm += mm.live && mm.air;
-  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d heli %.0f air-missiles %d hq %d,%d flag %d state %d",
+  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d",
            tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft, hd, nm,
-           hqSquare / MAPN, hqSquare % MAPN, (int)flagState, (int)state);
+           hqSquare / MAPN, hqSquare % MAPN, (int)flagState, (int)state, [] {
+             int n = 0;
+             for (Man &m : men) n += m.live;
+             return n;
+           }(), aboard, rescued, menKilled, menLost);
 }
 
 const char *gameDebug() { return debugText; }
@@ -1090,3 +1207,15 @@ void gameDebugPlace(float x, float y, float heading) {
   tank.speed = 0;
 }
 void gameDebugGod(bool on) { godMode = on; }
+void gameDebugMan(float x, float y, int side) {
+  for (Man &m : men)
+    if (!m.live) {
+      m.live = true;
+      m.side = side;
+      m.x = x;
+      m.y = y;
+      manHeading(m, 0);
+      m.turn = 5;
+      return;
+    }
+}

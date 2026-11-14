@@ -1,0 +1,31 @@
+# The men (battlefield 1): shell one of your own buildings in the compound - its 5 men run
+# out; stopped, the tank takes them aboard; into the garage, they're rescued. Then the
+# enemy's: a turret bunker by the HQ lets out 2 green men, run over
+god on
+tap FIRE
+hold NONE 2
+place 1376 830 0
+hold FIRE 90
+hold NONE 20
+shot men0
+hold NONE 300
+shot men1
+place 1440 800 0
+hold UP 50
+hold NONE 10
+shot men2
+place 1696 1184 2
+hold FIRE 100
+hold NONE 30
+shot men3
+hold UP 30
+hold NONE 30
+shot men4
+# and running men over: two of the enemy's and one of yours in the tank's way, driving
+place 1560 875 4
+man 1600 875 1
+man 1625 878 1
+man 1650 872 0
+hold UP 60
+hold NONE 10
+shot men5

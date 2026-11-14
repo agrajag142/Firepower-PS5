@@ -25,6 +25,7 @@ void gameAudio(short *out, int frames);
 const char *gameDebug();                          // (the PC test build: where the tank is)
 void gameDebugTank(float *x, float *y, float *heading);
 void gameDebugPlace(float x, float y, float heading);   // (the PC test build: put the tank somewhere)
+void gameDebugMan(float x, float y, int side);           // (the PC test build: a man there, 0 yours 1 the enemy's)
 void gameDebugGod(bool on);                             // (the PC test build: the tank can't be hurt)
 
 #endif // GAME_H

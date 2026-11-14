@@ -75,7 +75,7 @@ map at `B_15d0`). Each byte is a tile type (0-92).
 | 9 | the other square of a two-square thing |
 | 10 | movement: `& $78` copied into the second map `B_25d0` (bit 7 there: something standing on the square) |
 | 13 | strength |
-| 14 | side and kind: high nibble 1 yours, 2 the enemy's; low nibble compared by `sub_06954`; 0 open ground |
+| 14 | men inside, and whose: when the square is destroyed (`$068ea`..), bit 7 set lets out (low nibble) men of side 0, bit 6 men of side 1 (`sub_02566`: a man at a random place in the square, his picture from gr/men by side); bits 4, 5 tell your side's things from the enemy's |
 
 ## Sounds
 
@@ -104,3 +104,12 @@ flags); destroyed, the flag object `B_5352` (gr/numbers record 11, loaded to
 `B_5750`) is put on its square (`sub_0fd94`). Carrying the flag (bit 1 of the
 tank's byte $29) onto your base (bit 3 of the first flags) sets `B_5d36 = 4`:
 won. Without it, your base calls `sub_066c8(..., 5)` (a repair, it seems).
+
+## The men
+
+gr/men: 0 and 2 a man of side 0 (brown), 1 and 3 side 1 (green), facing right
+and left; 4 a blood splat; 5, 6 not yet known. `sub_044ae` (a tank touching a
+man): the tank's own side's man is run over (`sub_045bc`: his side's casualty
+count `B_5d58`, the blood picture, the Splat sound). The other side's: if the
+tank is stopped and has room (its $70 record: carried $16 < room $14) he's
+taken aboard (`sub_04638`); moving, he's run over.
