@@ -43,6 +43,8 @@ struct TileType {
   uint8_t block;              // movement flags: & 0x78 = solid (the original's B_25d0 map)
   uint8_t strength;           // hits it takes
   uint8_t side;               // high nibble: 1 yours, 2 the enemy's; 0 open ground
+  uint8_t enemy;              // drawn in the enemy's colours (the original's copies at $6cea: bit 3 of
+                              // each colour cleared, so its browns are greens)
 };
 
 struct Assets {
@@ -51,6 +53,8 @@ struct Assets {
   uint32_t pal[32];           // the battle's colours (gr/oneplayer's palette)
   Pic title;                  // gr/fp.title
   Pic tiles[50];              // gr/tiles, at 2x (128 x 128), ready to copy
+  Pic tilesEnemy[50];         // the same in the enemy's colours
+  uint32_t tileAvgEnemy[50];
   uint32_t tileAvg[50];       // each tile's average colour (the map)
   uint8_t tileSolid[50][64 * 64];   // 1 where a tile's picture isn't sand (what blocks, in a solid square)
   uint8_t tileLeaves[50][64 * 64];  // 1 where it's leaves (green): drawn over a tank under the tree

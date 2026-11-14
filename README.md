@@ -10,6 +10,12 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 008
+
+- The enemy's walls, corner posts, bunkers, buildings and helipads in the
+  enemy's colours (greens where yours are browns), as the original draws its
+  copies of them (each colour's bit 3 cleared)
+
 ## Version 007
 
 - The turrets are where the original has them: on the enemy's corner posts and

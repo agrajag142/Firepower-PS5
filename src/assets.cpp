@@ -48,6 +48,8 @@ static uint32_t amigaColour(int v) {   // $0RGB -> 0xAABBGGRR
 }
 
 // One record's planes into a picture, through PlanePick / PlaneOnOff and the mask
+static int gClear = 0;   // colour bits cleared as a picture is decoded (the enemy's tiles: 8)
+
 static void decodeRecord(const uint8_t *hdr, const uint8_t *data, Pic &out, bool opaque) {
   int w = be16(hdr), h = be16(hdr + 2), depth = be16(hdr + 4), planes = be16(hdr + 6);
   int mask = be16(hdr + 8), pick = be16(hdr + 12), onoff = be16(hdr + 14);
@@ -71,7 +73,7 @@ static void decodeRecord(const uint8_t *hdr, const uint8_t *data, Pic &out, bool
       int byte = y * bpr + (x >> 3), bit = 7 - (x & 7), c = fixed;
       for (int k = 0; k < depth && k < 8; k++)
         if (data[k * bpr * h + byte] >> bit & 1) c |= 1 << target[k];
-      uint32_t px = A.pal[c & 31];
+      uint32_t px = A.pal[c & ~gClear & 31];
       if (hasMask && !(data[mask * bpr * h + byte] >> bit & 1)) px = 0;
       out.px[y * w + x] = px;
     }
@@ -138,8 +140,25 @@ bool assetsLoad(const char *dir) {
   munmap(op, (size_t)len);
 
   if (!loadScreen("gr/fp.title", A.title)) return false;
-  PicSet tiles;
+  static PicSet tiles, tilesE;
   if (!loadSet("gr/tiles", tiles, true) || tiles.n < 50) return false;
+  gClear = 8;   // the enemy's: as the original blits its copies (sub_0534c: planes in byte $1a cleared)
+  bool okE = loadSet("gr/tiles", tilesE, true) && tilesE.n >= 50;
+  gClear = 0;
+  if (!okE) return false;
+  for (int t = 0; t < 50; t++) {
+    Pic &src = tilesE.pic[t], &dst = A.tilesEnemy[t];
+    dst.w = dst.h = 128;
+    dst.px = (uint32_t *)bigAlloc(128 * 128 * 4);
+    unsigned r = 0, g = 0, bl = 0;
+    for (int y = 0; y < 128; y++)
+      for (int x = 0; x < 128; x++) {
+        uint32_t p = src.px[(y >> 1) * src.w + (x >> 1)];
+        dst.px[y * 128 + x] = p;
+        r += p & 255; g += p >> 8 & 255; bl += p >> 16 & 255;
+      }
+    A.tileAvgEnemy[t] = rgba(r / 16384, g / 16384, bl / 16384);
+  }
   // the sand: every colour in the two plain sand tiles (0 and 1)
   static uint8_t sand[32];
   memset(sand, 0, sizeof(sand));
@@ -204,6 +223,7 @@ bool assetsLoad(const char *dir) {
     const uint8_t *e = tt + k * 16;
     TileType &t = A.types[k];
     t.pic = e[3] < 50 ? e[3] : 0;
+    t.enemy = e[2] != 0;
     t.becomes = e[4];
     t.destructible = e[5];
     t.flagsA = e[6];
@@ -214,6 +234,15 @@ bool assetsLoad(const char *dir) {
     t.side = e[14];
   }
   munmap(tt, (size_t)len);
+  // (files from an older tools/extract_assets.py don't say which types are the
+  // enemy's copies: these are, in the original's table)
+  bool any = false;
+  for (int k = 0; k < 93; k++) any |= A.types[k].enemy != 0;
+  if (!any) {
+    static const uint8_t copies[] = { 29, 30, 31, 33, 34, 35, 36, 37, 38, 39, 40, 64, 66, 67, 68,
+                                      69, 71, 73, 75, 76, 78, 79, 80, 81, 82, 83, 84, 87, 88, 92 };
+    for (uint8_t k : copies) A.types[k].enemy = 1;
+  }
 
   static const char *mapNames[11] = { "mapp1/t1", "mapp1/t2", "mapp1/t3", "mapp1/t4", "mapp1/t5", "mapp2/t1",
                                       "mapp2/t2", "mapp2/t3", "mapp2/t4", "mapp2/t5", "mapp3/t1" };

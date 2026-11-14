@@ -6,6 +6,9 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 008: the enemy's walls, posts, buildings and pads in the enemy's
+// colours (green), as the original draws its copies of them.
+//
 // Version 007: the turrets where the original has them - the enemy's corner
 // posts and bunkers (bit 3 of the tile's second flags; sub_01f82 draws their
 // guns, their heading kept in the square's low 3 bits), the gun at the
@@ -47,7 +50,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V007";
+static const char *VERSION = "V008";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -728,7 +731,8 @@ static void drawField() {
         pxRect(sx, sy, sx + TILE * S - 1, sy + TILE * S - 1, rgba(0, 0, 0));
         continue;
       }
-      const Pic &t = A.tiles[typeAt(tx, ty).pic];
+      const TileType &tt = typeAt(tx, ty);
+      const Pic &t = tt.enemy ? A.tilesEnemy[tt.pic] : A.tiles[tt.pic];
       int cx0 = sx < 0 ? -sx : 0, cx1 = sx + 128 > FB_W ? FB_W - sx : 128;
       if (cx1 <= cx0) continue;
       for (int y = 0; y < 128; y++) {
@@ -762,7 +766,7 @@ static void drawMap(int x0, int y0, int cell, float alpha) {
   for (int tx = 0; tx < MAPN; tx++)
     for (int ty = 0; ty < MAPN; ty++) {
       const TileType &t = typeAt(tx, ty);
-      uint32_t c = A.tileAvg[t.pic];
+      uint32_t c = t.enemy ? A.tileAvgEnemy[t.pic] : A.tileAvg[t.pic];
       if (t.block & 0x78) c = t.destructible && t.strength >= 15 ? rgba(150, 80, 30) : rgba(40, 40, 46);
       pxRect(x0 + tx * cell, y0 + ty * cell, x0 + tx * cell + cell - 1, y0 + ty * cell + cell - 1, c);
     }
@@ -864,7 +868,7 @@ static void drawRoofs() {
       if (t.flagsA & 0x0c) solid = A.tileSolid[t.pic];          // a roof
       else if (A.nTrees[t.pic]) solid = A.tileLeaves[t.pic];     // a tree's leaves
       else continue;
-      const Pic &pic = A.tiles[t.pic];
+      const Pic &pic = t.enemy ? A.tilesEnemy[t.pic] : A.tiles[t.pic];
       int sx = roundi((tx * TILE - camX) * S), sy = roundi((ty * TILE - camY) * S);
       for (int y = 0; y < 128; y++) {
         int yy = sy + y;

@@ -15,6 +15,8 @@ What it writes (all names lower case):
     sounds/*        raw signed 8-bit samples
     ins/i1..i3      the instruction text
     tiletypes.bin   the 93 tile types (16 bytes each) from the game program
+                    (bytes 0-3: the tile's picture number, byte 2 the enemy's
+                    colour change; the rest as the original)
     sounds.bin      each sound's Paula period (big-endian words), in the order
                     tankblast boom2 heli splat drip
 """
@@ -146,12 +148,15 @@ def main():
     for k in range(93):
         e = bytearray(data[0x5fa + k * 16:0x5fa + k * 16 + 16])
         ptr = struct.unpack('>I', e[:4])[0]
+        enemy = 0
         if ptr >= 0x6cea:
             ptr = copies[(ptr - 0x6cea) // 28]
+            enemy = 8   # the copies are drawn with colour bit 3 cleared (their byte $1a)
         pic = (ptr - 0x5770) // 28
         if not 0 <= pic < 50:
             raise SystemExit('Unexpected tile table: is this the original program?')
         e[0:4] = struct.pack('>I', pic)
+        e[2] = enemy
         tt += e
     open(os.path.join(out, 'tiletypes.bin'), 'wb').write(tt)
     per = b''.join(data[o:o + 2] for o in (0x24c, 0x27c, 0x2c4, 0x2f4, 0x33c))
