@@ -10,6 +10,19 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 029: the helicopters as the original's
+
+- From the original's helicopter code (`sub_02de8`): a helicopter always heads
+  for your tank, turning slowly when it's well off course and quickly when
+  nearly lined up - so it flies over, swings round in a wide loop and comes
+  back. It fires when it's within one of its 16 headings of facing your tank,
+  with your tank 50 to 150 pixels off across or up and down
+- Its missile goes the way the helicopter faces (the nearest of 8 directions,
+  `sub_0356a`), not straight at your tank, so it often lands on the buildings
+  and walls round your tank instead: it bursts on them and does them no harm.
+  Sitting in your garage, its walls take them
+- One missile out at a time, as the original (they come a little more often)
+
 ## Version 028
 
 - RANDOM BATTLEFIELD in the settings (on to start; only there with CLASSIC
@@ -278,6 +291,7 @@ firepower/build.sh sim firepower/sim/trees.txt   # under the trees, up to their 
 firepower/build.sh sim firepower/sim/turret.txt  # a turret fires at the tank; the tank destroys it
 firepower/build.sh sim firepower/sim/gameover.txt   # all three tanks lost
 firepower/build.sh sim firepower/sim/heli.txt    # a helicopter attacks; the tank shoots it down
+firepower/build.sh sim firepower/sim/heligarage.txt   # in the garage: the helicopters' missiles burst on its walls
 firepower/build.sh sim firepower/sim/wall.txt    # shooting a wall open
 firepower/build.sh sim firepower/sim/flag.txt    # the bunkers, the HQ, the flag, home: won
 firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard, rescued; run over

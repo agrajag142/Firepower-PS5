@@ -1,0 +1,13 @@
+# Sitting in the garage (as tested on the Amiga): the helicopters come and fire the way
+# they face, so their missiles often burst on the buildings and walls round the tank
+battlefield 0
+tap FIRE
+hold NONE 2
+hold NONE 2400
+shot hg1
+hold NONE 1200
+shot hg2
+hold NONE 1200
+shot hg3
+hold NONE 1200
+shot hg4

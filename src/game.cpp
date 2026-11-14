@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V028";
+static const char *VERSION = "V029";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -165,12 +165,15 @@ static const float HELI_EVERY = 30.0f;     // then one every this many seconds (
 static const float HELI_EVERY_MORE = 20.0f;
 static const int HELI_MAX = 5;             // at once
 static const float HELI_SPEED = 95.0f;
-static const float HELI_TURN = 1.3f;       // radians a second
-static const float HELI_CIRCLE = 150.0f;   // how far out it circles your tank
-static const float HELI_RELOAD = 2.2f;
+static const float HELI_TURN_FAST = 3.5f;  // radians a second, nearly lined up on your tank
+static const float HELI_CIRCLE = 150.0f;   // the size of its loops (well off course it turns at its speed / this)
+static const float HELI_RELOAD = 1.2f;      // (the original: one missile out at a time)
 static const int HELI_HITS = 2;            // shells to bring one down
 static const float HELI_MISSILE_SPEED = 190.0f;
-static const int HELI_MISSILE_DAMAGE = 10;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
+static const int HELI_MISSILE_DAMAGE = 10;
+static const float HELI_FIRE_NEAR = 50.0f;  // it fires when your tank is between these across, or up and down
+static const float HELI_FIRE_FAR = 150.0f;  //   (the original's 50 and 150)
+static const float HELI_MISSILE_RANGE = 230.0f;   // past your tank: what's behind it takes the missile           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the music
 // (the settings menu changes these; they're kept on the PS5 for next time)
@@ -401,6 +404,7 @@ static float unloadT = 0, extraT = 0, fuelT = 0;   // (fuelT: the REFUELLED mess
 static int mines = MINES;   // (extraT: the EXTRA TANK message, while > 0)
 static float aidX = 20, aidY = 32;   // the red cross in the first-aid station's square (from its picture)
 static Heli helis[HELI_MAX];
+static int heliShots = 0, heliShotsHit = 0;   // (the PC test build's report)
 static float heliTimer = 0;
 // the flag: in the enemy's headquarters, lying loose, or on your tank
 enum FlagState { FLAG_HIDDEN, FLAG_LOOSE, FLAG_CARRIED };
@@ -776,12 +780,18 @@ static void moveMissiles(float dt) {
       mm.x += mm.dx * dt / 3;
       mm.y += mm.dy * dt / 3;
       float dx = mm.x - tank.x, dy = mm.y - tank.y;
-      if (tank.alive && dx * dx + dy * dy < 12 * 12) {
+      if (tank.alive && dx * dx + dy * dy < (mm.air ? 16 * 16 : 12 * 12)) {   // (a helicopter's: the original's boxes overlapping)
         tankHit(mm.air ? HELI_MISSILE_DAMAGE : MISSILE_DAMAGE, mm.x, mm.y);
+        if (mm.air) heliShotsHit++;
         mm.live = false;
       } else if (!mm.air && solidAt(mm.x, mm.y, false) && sq((int)floorf(mm.x / TILE), (int)floorf(mm.y / TILE)) != mm.from) {
         // the enemy's missiles wear down what they hit, as your shells do
         addBoom(mm.x, mm.y, false);
+        mm.live = false;
+      } else if (mm.air && mm.left < HELI_MISSILE_RANGE / HELI_MISSILE_SPEED - 0.15f && solidAt(mm.x, mm.y, false)) {
+        // a helicopter's: it bursts on a building or wall, and does it no harm
+        addBoom(mm.x, mm.y, false);
+        playSound(SND_DRIP, 0.5f);
         mm.live = false;
       }
     }
@@ -838,13 +848,17 @@ static void spawnHeli() {
     }
 }
 
-static void heliMissile(const Heli &h, float aim) {
+// As the original (sub_0356a): the missile goes the way the helicopter faces, in
+// the nearest of 8 directions - not at your tank - so it often lands on what's
+// round your tank (your buildings and walls), and bursts on them harmlessly
+static void heliMissile(const Heli &h) {
+  heliShots++;
   for (Missile &mm : missiles)
     if (!mm.live) {
-      int f = roundi(aim / TWO_PI * 8) & 7;   // (the picture: the nearest of its 8)
-      float a = aim;                          // straight at your tank
+      int f = roundi(h.heading / TWO_PI * 8) & 7;
+      float a = f * TWO_PI / 8;
       mm = { true, h.x + sinf(a) * 22, h.y - cosf(a) * 22, sinf(a) * HELI_MISSILE_SPEED, -cosf(a) * HELI_MISSILE_SPEED,
-             MISSILE_RANGE / HELI_MISSILE_SPEED, f, -1, -1, true };
+             HELI_MISSILE_RANGE / HELI_MISSILE_SPEED, f, -1, -1, true };
       playSound(SND_TANKBLAST, 0.4f);
       return;
     }
@@ -860,28 +874,25 @@ static void updateHelis(float dt) {
   }
   for (Heli &h : helis) {
     if (!h.live) continue;
-    // where it heads: a point on a circle round your tank, ahead of it on its way round
+    // as the original (sub_02de8): it always heads for your tank, but turns slowly
+    // when it's well off course and quickly when nearly lined up - so it flies over,
+    // swings round in a wide loop and comes back at it: the circling
     float dx = h.x - tank.x, dy = h.y - tank.y, dist = sqrtf(dx * dx + dy * dy) + 0.01f;
-    float tx, ty;
-    if (dist > h.ring * 1.6f) {
-      tx = tank.x;
-      ty = tank.y;
-    } else {
-      float a = atan2f(dy, dx) + h.side * 0.7f;
-      tx = tank.x + cosf(a) * h.ring;
-      ty = tank.y + sinf(a) * h.ring;
-    }
-    float want = atan2f(tx - h.x, -(ty - h.y));
-    float diff = wrapAngle(want - h.heading), turn = HELI_TURN * dt;
+    float want = atan2f(tank.x - h.x, -(tank.y - h.y));
+    float diff = wrapAngle(want - h.heading);
+    float turn = (fabsf(diff) > TWO_PI / 8 ? HELI_SPEED / h.ring : HELI_TURN_FAST) * dt;
     h.heading = wrapAngle(h.heading + (diff > turn ? turn : (diff < -turn ? -turn : diff)));
     h.x += sinf(h.heading) * HELI_SPEED * dt;
     h.y -= cosf(h.heading) * HELI_SPEED * dt;
-    // fire when it faces your tank, near enough
+    // fire as the original (sub_02de8): when it's within one of its 16 headings of
+    // facing your tank, and your tank is a middling way off across or up and down
     h.reload -= dt;
     float toTank = atan2f(tank.x - h.x, -(tank.y - h.y));
-    // fire when your tank is ahead of it (not behind), near enough
-    if (tank.alive && dist < 330 && h.reload <= 0 && fabsf(wrapAngle(toTank - h.heading)) < 1.75f) {
-      heliMissile(h, toTank);
+    float ax = fabsf(dx), ay = fabsf(dy);
+    bool band = (ax > HELI_FIRE_NEAR && ax < HELI_FIRE_FAR) || (ay > HELI_FIRE_NEAR && ay < HELI_FIRE_FAR);
+    if (tank.alive && band && dist < HELI_FIRE_FAR * 1.4f && h.reload <= 0 &&
+        fabsf(wrapAngle(toTank - h.heading)) <= TWO_PI / 16 + 0.01f) {
+      heliMissile(h);
       h.reload = HELI_RELOAD * (0.8f + 0.5f * rnd());
     }
     // its rotor, louder near
@@ -1732,13 +1743,13 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
       nh++;
     }
   for (Missile &mm : missiles) nm += mm.live && mm.air;
-  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d helis %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d fuel %.0f mines %d",
+  snprintf(debugText, sizeof(debugText), "tank %.0f,%.0f h%d spd %.0f score %d armour %d tanks %d helis %d heli %.0f air-missiles %d hq %d,%d flag %d state %d men %d aboard %d rescued %d killed %d lost %d fuel %.0f mines %d heli-shots %d hit %d",
            tank.x, tank.y, frameOf(tank.heading), tank.speed, score, tank.armour, tanksLeft, nh, hd, nm,
            hqSquare / MAPN, hqSquare % MAPN, (int)flagState, (int)state, [] {
              int n = 0;
              for (Man &m : men) n += m.live;
              return n;
-           }(), aboard, rescued, menKilled, menLost, tank.fuel, mines);
+           }(), aboard, rescued, menKilled, menLost, tank.fuel, mines, heliShots, heliShotsHit);
 }
 
 const char *gameDebug() { return debugText; }
