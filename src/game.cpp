@@ -6,6 +6,9 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 017: the garage's three walls are solid: a tank only comes out (or
+// goes in) at the bottom, as on the Amiga.
+//
 // Version 016: shells reach about 165 pixels (on the Amiga: three quarters of
 // its battle view, which is about 218 pixels across).
 //
@@ -84,7 +87,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V016";
+static const char *VERSION = "V017";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -208,8 +211,15 @@ static bool solidSquare(int tx, int ty) {
 static bool solidAt(float x, float y, bool trees = true) {
   int tx = (int)floorf(x / TILE), ty = (int)floorf(y / TILE);
   if (!solidSquare(tx, ty)) {
+    if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return false;
+    // a base's garage (bits 3, 2 of the first flags): its left, top and right walls are
+    // solid, open only at the bottom (the picture's walls: left to x 19, right from 45, top to y 15)
+    if (typeAt(tx, ty).flagsA & 0x0c) {
+      int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
+      if (py >= 8 && py < 56 && px >= 9 && px < 56 && (px < 19 || px >= 45 || py < 15)) return true;
+    }
     // a tree: only its trunk, in the middle of its leaves, stops a tank
-    if (!trees || tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return false;
+    if (!trees) return false;
     int pic = typeAt(tx, ty).pic;
     for (int k = 0; k < A.nTrees[pic]; k++) {
       const Assets::Tree &tr = A.trees[pic][k];

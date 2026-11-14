@@ -10,6 +10,11 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 017
+
+- The garage's left, top and right walls are solid: the tank only comes out
+  (and goes back in) at the bottom, as on the Amiga
+
 ## Version 016
 
 - Your shells reach about 165 pixels: three quarters of the Amiga's battle
@@ -201,6 +206,7 @@ firepower/build.sh sim firepower/sim/flag.txt    # the bunkers, the HQ, the flag
 firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard, rescued; run over
 firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, the garage
+firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
 ```
 
 It runs the same game code with a scripted controller (see `sim/sim_main.cpp`
