@@ -198,6 +198,36 @@ bool assetsLoad(const char *dir) {
       }
       if (n >= 30 && A.nTrees[t] < 4) A.trees[t][A.nTrees[t]++] = { sx / n + 0.5f, sy / n + 0.5f, sqrtf(n / 3.14159f) };
     }
+    // a ruin: its big pieces still stand (joined shapes of 60 pixels and more: wall
+    // stubs, a building's corners, a depot's frame); the scattered rubble doesn't.
+    // (Not the gate's ruin - a way through - nor the headquarters', where the flag lies.)
+    memset(A.tileDebris[t], 0, sizeof(A.tileDebris[t]));
+    static const uint8_t ruins[] = { 22, 24, 28, 30, 39, 40, 41, 45, 46, 47, 49 };
+    bool isRuin = false;
+    for (uint8_t r : ruins) isRuin |= r == t;
+    if (isRuin) {
+      memset(seen, 0, sizeof(seen));
+      static int16_t comp[64 * 64];
+      for (int i = 0; i < 64 * 64; i++) {
+        if (!A.tileSolid[t][i] || seen[i]) continue;
+        int n = 0, top = 0;
+        stack[top++] = (int16_t)i;
+        seen[i] = 1;
+        while (top) {
+          int k = stack[--top], x = k % 64, y = k / 64;
+          comp[n++] = (int16_t)k;
+          for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) {
+              int nx = x + dx, ny = y + dy, j = ny * 64 + nx;
+              if (nx < 0 || ny < 0 || nx > 63 || ny > 63 || !A.tileSolid[t][j] || seen[j]) continue;
+              seen[j] = 1;
+              stack[top++] = (int16_t)j;
+            }
+        }
+        if (n >= 60)
+          for (int k = 0; k < n; k++) A.tileDebris[t][comp[k]] = 1;
+      }
+    }
     // over a tank under it, all of a tree is drawn: the leaves, their black, and its
     // shadow (which falls on the tank too)
     if (A.nTrees[t]) memcpy(A.tileLeaves[t], A.tileSolid[t], sizeof(A.tileLeaves[t]));

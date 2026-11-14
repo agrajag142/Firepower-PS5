@@ -10,6 +10,12 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 023
+
+- What still stands in a ruin - wall stubs, a building's corners, a depot's
+  frame - blocks the tank, as walls do; the scattered rubble doesn't
+- Music louder: both tunes at 0.85
+
 ## Version 022
 
 - Music, as our other PS5 games: `title.mod` on the title and end screens,
@@ -240,6 +246,7 @@ firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard
 firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, the garage
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
+firepower/build.sh sim firepower/sim/ruin.txt    # a ruin: its corners block, its middle doesn't
 ```
 
 (The scripts press Triangle first, so they play battlefield 1-1.) It runs the same game code with a scripted controller (see `sim/sim_main.cpp`

@@ -1,0 +1,15 @@
+# A building's ruin (battlefield 1: the garage row's first building, square 21,11, shelled from
+# below): driving into what still stands of it stops the tank; its middle is open
+tap NEXT
+tap FIRE
+hold NONE 2
+god on
+place 1376 830 0
+hold FIRE 90
+hold NONE 30
+place 1356 815 0
+hold UP 120
+shot ruin_corner
+place 1376 815 0
+hold UP 120
+shot ruin_middle

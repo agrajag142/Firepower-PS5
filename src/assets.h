@@ -58,6 +58,7 @@ struct Assets {
   uint32_t tileAvgEnemy[50];
   uint32_t tileAvg[50];       // each tile's average colour (the map)
   uint8_t tileSolid[50][64 * 64];   // 1 where a tile's picture isn't sand (what blocks, in a solid square)
+  uint8_t tileDebris[50][64 * 64];  // in a ruin: what still stands (wall stubs, corners, frames) - it blocks
   uint8_t tileLeaves[50][64 * 64];  // 1 where it's leaves (green): drawn over a tank under the tree
   struct Tree { float x, y, r; };   // a tree in a tile: its middle and its size (Amiga pixels)
   int nTrees[50];

@@ -6,6 +6,10 @@
 // Enhanced: the whole 1920 x 1080 picture, the original's pixels at 2x, so
 // about 2.7 times as much of the battlefield is in view.
 //
+// Version 023: what still stands in a ruin (wall stubs, a building's corners,
+// a depot's frame) blocks, as walls do; the scattered rubble doesn't. Music
+// louder (0.85).
+//
 // Version 022: music, as our other PS5 games: title.mod on the title and end
 // screens, game.mod in the battle (in the app's assets; without them, silence).
 // The goal reads CAPTURE THE ENEMY FLAG.
@@ -107,7 +111,7 @@
 #include <string.h>
 
 // ============================================================ settings
-static const char *VERSION = "V022";
+static const char *VERSION = "V023";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -167,8 +171,8 @@ static const float HELI_MISSILE_SPEED = 190.0f;
 static const int HELI_MISSILE_DAMAGE = 10;           // a tree's trunk: this much of its leaves' size (and at least 3 pixels)      // seconds after you're clear of a gate, it shuts
 
 // ============================================================ the music
-#define TITLE_MUSIC_VOLUME 0.45f   // title.mod: 0.0 = off ... 1.0 = full
-#define GAME_MUSIC_VOLUME  0.25f   // game.mod, under the battle's sounds
+#define TITLE_MUSIC_VOLUME 0.85f   // title.mod: 0.0 = off ... 1.0 = full
+#define GAME_MUSIC_VOLUME  0.85f   // game.mod, in the battle
 #define MUSIC_FADE_SECONDS 0.8f    // the two cross over
 extern "C" {   // (micromod2.c: a second copy of the MOD player, so each tune keeps its place)
 long micromod2_calculate_mod_file_len(signed char *module_header);
@@ -299,9 +303,14 @@ static bool solidAt(float x, float y, bool trees = true) {
       int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
       if (py >= 8 && py < 56 && px >= 9 && px < 56 && (px < 19 || px >= 45 || py < 15)) return true;
     }
+    // a ruin: what still stands in it blocks (the scattered rubble doesn't)
+    int pic = typeAt(tx, ty).pic;
+    {
+      int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
+      if (A.tileDebris[pic][py * TILE + px]) return true;
+    }
     // a tree: only its trunk, in the middle of its leaves, stops a tank
     if (!trees) return false;
-    int pic = typeAt(tx, ty).pic;
     for (int k = 0; k < A.nTrees[pic]; k++) {
       const Assets::Tree &tr = A.trees[pic][k];
       float dx = x - (tx * TILE + tr.x), dy = y - (ty * TILE + tr.y), r = tr.r * TRUNK;
