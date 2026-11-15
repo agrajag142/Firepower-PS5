@@ -1,0 +1,14 @@
+# LOW ARMOUR (CLASSIC off): the red glow beats round the tank, and from 20% the view's edges and the heartbeat
+battlefield 0
+tap FIRE
+hold NONE 2
+place 1500 1150 0
+armour 35
+hold NONE 3
+shot low35
+armour 15
+hold NONE 1
+shot low15_a
+hold NONE 4
+shot low15_b
+wav 3 lowarmour

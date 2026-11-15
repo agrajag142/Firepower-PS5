@@ -32,7 +32,8 @@ const char *gameDebug();                          // (the PC test build: where t
 void gameDebugTank(float *x, float *y, float *heading);
 void gameDebugPlace(float x, float y, float heading);   // (the PC test build: put the tank somewhere)
 void gameDebugMan(float x, float y, int side);           // (the PC test build: a man there, 0 yours 1 the enemy's)
-void gameDebugFuel(float f);                             // (the PC test build: set the fuel, 0..100)
+void gameDebugFuel(float f);
+void gameDebugArmour(int a);                             // (the PC test build: set the armour, 0..100)                             // (the PC test build: set the fuel, 0..100)
 void gameDebugGod(bool on);
 void gameDebugBattlefield(int m);
 void gameDebugTankKind(int k);                          // (the PC test build: the tank X starts with, 0..2, with battlefield N)                       // (the PC test build: the battlefield X starts, 0..10; -1 as the settings say)                             // (the PC test build: the tank can't be hurt)

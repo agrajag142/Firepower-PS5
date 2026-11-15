@@ -10,6 +10,13 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 034: low armour (CLASSIC off)
+
+- As QUANTUM LOCKDOWN: from 40% armour down a red haze beats round your tank,
+  quicker and stronger the lower it gets; two warning tones as it falls to 40,
+  30, 20 and 10%; from 20% down the heartbeat is heard and the battle view's
+  edges beat red too. No words on the screen
+
 ## Version 033
 
 - Your garage no longer repairs your tank: it only refuels it, as the
@@ -335,6 +342,7 @@ firepower/build.sh sim firepower/sim/showflag.txt   # SHOW FLAG: the flag on the
 firepower/build.sh sim firepower/sim/pick.txt    # RANDOM BATTLEFIELD off: choosing the battlefield
 firepower/build.sh sim firepower/sim/hiscore.txt   # a won battle into the high score table
 firepower/build.sh sim firepower/sim/tanks.txt   # choosing the tank: the Shadow
+firepower/build.sh sim firepower/sim/lowarmour.txt   # low armour: the red haze, the edges, the heartbeat
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

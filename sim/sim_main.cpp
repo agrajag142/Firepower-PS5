@@ -9,6 +9,7 @@
 //                shot NAME             (out/NAME.ppm, made a PNG by build.sh)
 //                wav SECONDS NAME      the sound for the next SECONDS: out/NAME.wav
 //                man X Y SIDE          a man at X,Y (0 yours, 1 the enemy's)
+//                armour N              the tank's armour (0..100)
 //                fuel N                the tank's fuel (0..100)
 //                battlefield N         X on the title starts battlefield N (0..10; -1: as the settings say)
 //                tank N                with battlefield: the tank (0 Scorpion, 1 standard, 2 Shadow)
@@ -131,6 +132,8 @@ int main(int argc, char **argv) {
       int side = 0;
       sscanf(line, "%*s %f %f %d", &x, &y, &side);
       gameDebugMan(x, y, side);
+    } else if (!strcmp(cmd, "armour")) {   // armour N: the tank's armour (0..100)
+      gameDebugArmour(atoi(a));
     } else if (!strcmp(cmd, "fuel")) {     // fuel N: the tank's fuel (0..100)
       gameDebugFuel((float)atof(a));
     } else if (!strcmp(cmd, "battlefield")) {   // battlefield N: X on the title starts that one (-1: as the settings say)

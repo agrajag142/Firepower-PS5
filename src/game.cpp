@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V033";
+static const char *VERSION = "V034";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -232,17 +232,20 @@ struct Voice {
 };
 static Voice voices[8];
 static std::atomic<uint32_t> soundAsk{0};
-static std::atomic<int> soundVolAsk[SND_COUNT];
+// Two more sounds of our own (CLASSIC off), made at the start: a heartbeat and a warning
+enum { GSND_HEART = SND_COUNT, GSND_ALERT, GSND_TOTAL };
+static Sound sounds[GSND_TOTAL];   // the disk's five, then ours
+static std::atomic<int> soundVolAsk[GSND_TOTAL];
 
 static void playSound(int id, float vol = 1.0f) {
-  if (id < 0 || id >= SND_COUNT || !A.snd[id].data) return;
+  if (id < 0 || id >= GSND_TOTAL || !sounds[id].data) return;
   soundVolAsk[id].store((int)(vol * 256), std::memory_order_relaxed);
   soundAsk.fetch_or(1u << id, std::memory_order_release);
 }
 
 void gameAudio(short *out, int frames) {
   uint32_t ask = soundAsk.exchange(0, std::memory_order_acquire);
-  for (int id = 0; id < SND_COUNT; id++) {
+  for (int id = 0; id < GSND_TOTAL; id++) {
     if (!(ask >> id & 1)) continue;
     int slot = 0;   // a free voice, or the one nearest its end
     double best = -1;
@@ -252,10 +255,10 @@ void gameAudio(short *out, int frames) {
       if (done > best) { best = done; slot = v; }
     }
     Voice &vc = voices[slot];
-    vc.data = A.snd[id].data;
-    vc.len = A.snd[id].len;
+    vc.data = sounds[id].data;
+    vc.len = sounds[id].len;
     vc.pos = 0;
-    vc.step = A.snd[id].rate / 48000.0;
+    vc.step = sounds[id].rate / 48000.0;
     vc.vol = soundVolAsk[id].load(std::memory_order_relaxed) / 256.0f;
   }
   // the music: each tune fading towards its level
@@ -727,6 +730,97 @@ static const int GUN_DX[8] = { 25, 26, 26, 27, 27, 19, 17, 19 };
 static const int GUN_DY[8] = { 16, 20, 27, 27, 27, 27, 27, 20 };
 static inline bool isTurret(int i) { return (A.types[field[i]].flagsB & 0x08) != 0; }
 
+// ---- LOW ARMOUR (CLASSIC off): from 40% down a red glow beats round your tank, quicker the
+// lower it gets; a warning sounds as it falls to 40, 30, 20 and 10%; from 20% down the heartbeat
+// is heard and the battle view's edges beat red too. No words.
+static int8_t synthHeart[16000 * 3 / 10], synthAlert[16000 * 42 / 100];
+static void makeSynthSounds() {
+  for (int i = 0; i < SND_COUNT; i++) sounds[i] = A.snd[i];
+  const float R = 16000;
+  // the heartbeat: two low thumps (falling tones, dying away)
+  memset(synthHeart, 0, sizeof(synthHeart));
+  auto thump = [&](int8_t *buf, int n, float t0, float len, float f0, float f1, float amp) {
+    float ph = 0;
+    for (int i = (int)(t0 * R); i < n && i < (int)((t0 + len) * R); i++) {
+      float k = (i - t0 * R) / (len * R), f = f0 + (f1 - f0) * k;
+      ph += f / R;
+      float v = (2 * fabsf(2 * (ph - floorf(ph + 0.5f))) - 1) * amp * expf(-4 * k) * fminf(1, k * 40);
+      int o = buf[i] + (int)(v * 127);
+      buf[i] = (int8_t)(o > 127 ? 127 : o < -127 ? -127 : o);
+    }
+  };
+  int nh = (int)sizeof(synthHeart);
+  thump(synthHeart, nh, 0.00f, 0.11f, 90, 40, 0.95f);
+  thump(synthHeart, nh, 0.17f, 0.12f, 80, 36, 0.75f);
+  sounds[GSND_HEART] = { synthHeart, nh, (int)R };
+  // the warning: two falling square tones
+  memset(synthAlert, 0, sizeof(synthAlert));
+  int na = (int)sizeof(synthAlert);
+  auto tone = [&](float t0, float len, float f0, float f1) {
+    float ph = 0;
+    for (int i = (int)(t0 * R); i < na && i < (int)((t0 + len) * R); i++) {
+      float k = (i - t0 * R) / (len * R), f = f0 + (f1 - f0) * k;
+      ph += f / R;
+      float env = fminf(1, k * 30) * fminf(1, (1 - k) * 8);
+      synthAlert[i] = (int8_t)((ph - floorf(ph) < 0.5f ? 1 : -1) * 38 * env);
+    }
+  };
+  tone(0.00f, 0.16f, 880, 660);
+  tone(0.19f, 0.22f, 660, 440);
+  sounds[GSND_ALERT] = { synthAlert, na, (int)R };
+}
+
+static float camX = 0, camY = 0;   // the view's top left, Amiga pixels
+static int armourBand = 100;                 // (the lowest 10% mark sounded since it was last above it)
+static float armourBeatT = 0, armourBeat = 0;   // (time to the next beat; the last beat's glow, fading)
+static void updateArmourAlerts(float dt) {
+  int pct = tank.armour;
+  int band = pct <= 10 ? 10 : pct <= 20 ? 20 : pct <= 30 ? 30 : pct <= 40 ? 40 : 100;
+  bool on = !classic && tank.alive && state == ST_PLAY;
+  if (on && band < armourBand) playSound(GSND_ALERT, 0.8f);
+  armourBand = tank.alive ? band : 100;
+  armourBeat = fmaxf(0.0f, armourBeat - dt * 2.5f);
+  if (!on || pct > 40) { armourBeatT = 0; armourBeat = 0; return; }
+  armourBeatT -= dt;
+  if (armourBeatT <= 0) {
+    armourBeatT = 0.45f + 0.6f * pct / 40.0f;   // (1.05 s at 40%, 0.6 s at 10%)
+    armourBeat = 1;
+    if (pct <= 20) playSound(GSND_HEART, 0.9f);
+  }
+}
+static void drawArmourGlow() {   // (under the tank)
+  if (armourBeat <= 0 || tank.armour > 40 || !tank.alive) return;
+  float k = 1.0f - tank.armour / 40.0f;   // (stronger the lower)
+  float px = (tank.x - camX) * S, py = (tank.y - camY) * S;
+  float a = (0.45f + 0.4f * k) * armourBeat, R = 70 + 20 * armourBeat;   // (it swells with each beat)
+  // a red haze round the tank, thickest in a ring about its edge (a tint, so it shows on the sand)
+  for (int y = (int)(py - R); y <= (int)(py + R); y++) {
+    if (y < 0 || y >= FB_H) continue;
+    for (int x = (int)(px - R); x <= (int)(px + R); x++) {
+      if (x < 0 || x >= PLAY_W) continue;
+      float d = sqrtf((x - px) * (x - px) + (y - py) * (y - py)) / R;
+      if (d >= 1) continue;
+      float f = a * (d < 0.55f ? 0.55f + 0.45f * d / 0.55f : 1 - (d - 0.55f) / 0.45f);
+      uint32_t &q = g_frame[(size_t)y * FB_W + x];
+      int r = q & 255, g = (q >> 8) & 255, b = (q >> 16) & 255;
+      r += (int)((255 - r) * f); g -= (int)(g * f * 0.8f); b -= (int)(b * f * 0.8f);
+      q = 0xff000000u | (uint32_t)b << 16 | (uint32_t)g << 8 | (uint32_t)r;
+    }
+  }
+}
+static void drawArmourEdges() {   // (over the battle view, from 20% down)
+  if (armourBeat <= 0 || tank.armour > 20 || !tank.alive) return;
+  float a = 0.35f * armourBeat;
+  for (int i = 0; i < 6; i++) {
+    float f = a * (1.0f - i / 6.0f);
+    int w = 12;
+    pxBlend(i * w, 0, i * w + w - 1, FB_H - 1, 255, 20, 20, f);
+    pxBlend(PLAY_W - 1 - i * w - w + 1, 0, PLAY_W - 1 - i * w, FB_H - 1, 255, 20, 20, f);
+    pxBlend(0, i * w, PLAY_W - 1, i * w + w - 1, 255, 20, 20, f);
+    pxBlend(0, FB_H - 1 - i * w - w + 1, PLAY_W - 1, FB_H - 1 - i * w, 255, 20, 20, f);
+  }
+}
+
 static bool godMode = false;   // (the PC test build)
 static void tankHit(int damage, float x, float y) {
   if (!tank.alive) return;
@@ -1121,7 +1215,6 @@ static void updateRespawn(float dt) {
 }
 
 // ============================================================ drawing
-static float camX = 0, camY = 0;   // the view's top left, Amiga pixels
 
 // A picture at 2x, centred on world point (x, y)
 static void drawPic2x(const Pic &p, float wx, float wy) {
@@ -1935,6 +2028,7 @@ void gameInit(uint32_t seed, const char *dir) {
   rng = seed | 1;
   gfxInit();
   assetsLoad(dir);
+  makeSynthSounds();
   loadSettings();
   loadHiScores();
   state = ST_TITLE;
@@ -2052,6 +2146,8 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   const Pic *flagPic = A.numbers.n > 11 ? &A.numbers.pic[11] : nullptr;
   if (flagPic && flagState == FLAG_LOOSE) drawPic2x(*flagPic, flagX, flagY - 2 * fabsf(sinf(clockT * 4)));
   const PicSet &tankPics = tankKind == 0 ? A.scorp : tankKind == 2 ? A.shadow : A.tank;
+  if (!menuOpen) updateArmourAlerts(dt);
+  drawArmourGlow();
   if (tank.alive && tankPics.n >= 16) drawPic2x(tankPics.pic[frameOf(tank.heading)], tank.x, tank.y);
   drawRoofs();
   if (flagPic && flagState == FLAG_CARRIED && tank.alive) drawPic2x(*flagPic, tank.x + 6, tank.y - 16);
@@ -2062,6 +2158,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     drawPic2x(A.heli.pic[16 + ((int)(clockT * 20) & 1)], h.x, h.y);
   }
   drawBooms(menuOpen ? 0 : dt);
+  drawArmourEdges();
   drawHud();
   if (menuOpen) drawMenu();
   float hd = -1;
@@ -2109,3 +2206,4 @@ void gameDebugMan(float x, float y, int side) {
     }
 }
 void gameDebugFuel(float f) { tank.fuel = f; }
+void gameDebugArmour(int a) { tank.armour = a; }
