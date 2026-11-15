@@ -10,6 +10,11 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 033
+
+- Your garage no longer repairs your tank: it only refuels it, as the
+  original. Armour lost stays lost (the next tank starts with full armour)
+
 ## Version 032: the three tanks
 
 - CHOOSE YOUR TANK after the battlefield (as the original): the Scorpion, the

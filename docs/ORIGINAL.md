@@ -103,7 +103,7 @@ Headquarters: 69 (one hit) becomes 81 (strength 75, bit 5 of the second
 flags); destroyed, the flag object `B_5352` (gr/numbers record 11, loaded to
 `B_5750`) is put on its square (`sub_0fd94`). Carrying the flag (bit 1 of the
 tank's byte $29) onto your base (bit 3 of the first flags) sets `B_5d36 = 4`:
-won. Without it, your base calls `sub_066c8(..., 5)` (a repair, it seems).
+won. Without it, your base calls `sub_066c8(..., 5)`. Armour is only ever taken away (`sub_040aa`); the +5s in `sub_0574a` go into the fuel (field `$e` of the tank's numbers, whose top is `$c`), so nothing repairs a tank.
 
 ## The men
 

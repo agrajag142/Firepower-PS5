@@ -63,7 +63,7 @@
 // is its headquarters (type 69): one shell opens it to its inner bunker (81),
 // and when that's destroyed your flag lies in the ruin. Pick it up and bring
 // it home to your base (bit 3 of the first flags: the garage) to win, as the
-// original (its B_5d36 = 4). Without the flag, your base repairs your tank.
+// original (its B_5d36 = 4). Without the flag, your base refuels your tank (it doesn't repair it).
 // The other bunkers are decoys.
 //
 // Version 008: the enemy's walls, posts, buildings and pads in the enemy's
@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V032";
+static const char *VERSION = "V033";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -168,7 +168,6 @@ static const TankKind KINDS[3] = {
 static int tankKind = 1;   // the one chosen for this battle
 static const TankKind &kind() { return KINDS[tankKind]; }
 static const float MEN_KEEP_BACK = 60;     // with it full, your men wait this far from it (pixels)
-static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
 static const float HELI_EVERY = 30.0f;     // then one every this many seconds (+ up to HELI_EVERY_MORE)
 static const float HELI_EVERY_MORE = 20.0f;
@@ -418,7 +417,7 @@ static float heliTimer = 0;
 // the flag: in the enemy's headquarters, lying loose, or on your tank
 enum FlagState { FLAG_HIDDEN, FLAG_LOOSE, FLAG_CARRIED };
 static FlagState flagState = FLAG_HIDDEN;
-static float flagX = 0, flagY = 0, repairT = 0;
+static float flagX = 0, flagY = 0;
 static int hqSquare = -1;
 static uint8_t decoy[64 * 64];   // 1: a decoy bunker (no flag inside)
 static int helisDown = 0;
@@ -547,7 +546,6 @@ static void startBattle(int m) {
       strength[hqSquare] = A.types[69].strength;
     }
     flagState = FLAG_HIDDEN;
-    repairT = 0;
   }
   nOurs = 0;
   for (int i = 0; i < MAPN * MAPN && nOurs < 256; i++)
@@ -1079,7 +1077,7 @@ static void updateMen(float dt) {
 
 // After a tank is lost: the next comes out of the garage, or it's over
 // The flag: picked up by driving over it; brought home to your base, the battle is won.
-// Without it, your base repairs your tank.
+// Without it, your base refuels your tank.
 static void updateFlag(float dt) {
   if (!tank.alive) return;
   if (flagState == FLAG_LOOSE) {
@@ -1098,12 +1096,9 @@ static void updateFlag(float dt) {
     score += 5000 + 1000 * tanksLeft;
     return;
   }
+  // your garage refuels the tank (the original's +5 at a time goes into the fuel);
+  // it doesn't repair it - lost armour stays lost
   tank.fuel = tank.fuel + REFUEL_RATE * dt > 100 ? 100 : tank.fuel + REFUEL_RATE * dt;
-  repairT += dt;
-  while (repairT >= REPAIR_EVERY) {
-    repairT -= REPAIR_EVERY;
-    if (tank.armour < 100) tank.armour = tank.armour + 5 > 100 ? 100 : tank.armour + 5;
-  }
 }
 
 static void updateRespawn(float dt) {
