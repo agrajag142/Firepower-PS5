@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V035";
+static const char *VERSION = "V036";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -613,6 +613,48 @@ static void setupObjectives() {
     }
   }
   for (int q = np; q < 3; q++) objDone[q] = true;   // (not enough room for it: it's not asked for)
+}
+
+// Enough of your men still to be had for the 15? (a tank lost with men aboard, men run over...)
+// If not, another of the enemy's buildings turns out to hold prisoners: a new prison camp
+static float prisonCheckT = 0;
+static void checkPrisoners(float dt) {
+  if (!bonusOn || prisonersDone || !tank.alive) return;
+  prisonCheckT -= dt;
+  if (prisonCheckT > 0) return;
+  prisonCheckT = 1;
+  int have = rescued + aboard;
+  for (const Man &m : men) have += m.live && m.side == 0;
+  for (int i = 0; i < MAPN * MAPN; i++) {
+    const TileType &t = A.types[field[i]];
+    if (objAt[i] == OBJ_PRISON) have += t.side & 0x0f;
+    else if (t.enemy && t.destructible && (t.side & 0x80)) have += t.side & 0x0f;   // (the original's own captives)
+  }
+  if (have >= PRISONERS_NEEDED) return;
+  static int cands[4096];
+  int n = 0;
+  for (int i = 0; i < MAPN * MAPN; i++) {
+    int t = field[i];
+    if (objAt[i] >= 0 || i == hqSquare) continue;
+    if (t == 29 || t == 30 || t == 31 || (t == 92 && decoy[i])) cands[n++] = i;
+  }
+  bool found = false;
+  while (have < PRISONERS_NEEDED && n > 0) {
+    int k = (int)(rnd() * n) % n, i = cands[k];
+    cands[k] = cands[--n];
+    if (field[i] == 92) {   // (a decoy bunker: a building with men in it now)
+      field[i] = 29;
+      strength[i] = A.types[29].strength;
+      decoy[i] = 0;
+    }
+    objAt[i] = OBJ_PRISON;
+    have += A.types[field[i]].side & 0x0f;
+    found = true;
+  }
+  if (found) {
+    objMsg = showFlag ? "ANOTHER PRISON CAMP FOUND - SEE THE RADAR" : "ANOTHER PRISON CAMP FOUND";
+    objMsgT = 3;
+  }
 }
 
 // One of them destroyed (from hitSquare)
@@ -2358,7 +2400,10 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   const Pic *flagPic = A.numbers.n > 11 ? &A.numbers.pic[11] : nullptr;
   if (flagPic && flagState == FLAG_LOOSE) drawPic2x(*flagPic, flagX, flagY - 2 * fabsf(sinf(clockT * 4)));
   const PicSet &tankPics = tankKind == 0 ? A.scorp : tankKind == 2 ? A.shadow : A.tank;
-  if (!menuOpen) updateArmourAlerts(dt);
+  if (!menuOpen) {
+    updateArmourAlerts(dt);
+    checkPrisoners(dt);
+  }
   drawArmourGlow();
   if (tank.alive && tankPics.n >= 16) drawPic2x(tankPics.pic[frameOf(tank.heading)], tank.x, tank.y);
   drawRoofs();

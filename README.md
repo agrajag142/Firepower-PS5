@@ -10,6 +10,14 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 036
+
+- The 15 prisoners can't become impossible: if too few of your men are left to
+  be had (a tank lost with men aboard, men run over), another enemy building
+  turns out to be a prison camp - ANOTHER PRISON CAMP FOUND (and on the radar,
+  with SHOW FLAG). The original's own captives count too (battlefields 1-3 to
+  3-1 hold many of your men in the enemy's barracks; 1-1 and 1-2 none)
+
 ## Version 035: bonus objectives (CLASSIC off)
 
 - BONUS OBJECTIVES in the settings (on to start; only there with CLASSIC off).
