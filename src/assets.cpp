@@ -163,6 +163,36 @@ static bool loadSound(const char *name, Sound &s, int period) {
 
 // The new title (assets/title_hd.png, beside fp/): scaled to fit 1800 x 900 pixels
 // (each pixel the average of the picture's under it). Missing: the original's title only.
+// A PNG beside fp/ (name: "objectives/radar.png"...), as it is (alpha kept); false if it's missing
+bool assetsLoadPng(const char *name, Pic &out) {
+  char path[256];
+  snprintf(path, sizeof(path), "%s../%s", gDir, name);
+  FILE *f = fopen(path, "rb");
+  if (!f) return false;
+  fseek(f, 0, SEEK_END);
+  long n = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  uint8_t *buf = n > 0 ? (uint8_t *)stbMalloc((size_t)n) : nullptr;
+  bool ok = buf && fread(buf, 1, (size_t)n, f) == (size_t)n;
+  fclose(f);
+  int w = 0, h = 0, ch = 0;
+  uint8_t *img = ok ? stbi_load_from_memory(buf, (int)n, &w, &h, &ch, 4) : nullptr;
+  stbFree(buf);
+  if (!img) return false;
+  uint32_t *px = (uint32_t *)bigAlloc((size_t)w * h * 4);
+  if (px)
+    for (int i = 0; i < w * h; i++) {
+      const uint8_t *q = img + (size_t)i * 4;
+      px[i] = (uint32_t)q[3] << 24 | (uint32_t)q[2] << 16 | (uint32_t)q[1] << 8 | q[0];
+    }
+  stbi_image_free(img);
+  if (!px) return false;
+  out.w = w;
+  out.h = h;
+  out.px = px;
+  return true;
+}
+
 static void loadTitleHd() {
   char path[256];
   snprintf(path, sizeof(path), "%s../title_hd.png", gDir);

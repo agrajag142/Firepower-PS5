@@ -76,6 +76,9 @@ extern Assets A;
 // Loads everything from dir (ending in '/'): "/app0/assets/fp/" on the PS5.
 bool assetsLoad(const char *dir);
 
+// A PNG of ours beside fp/ ("objectives/radar.png"), alpha kept (0xAABBGGRR); false if it's missing
+bool assetsLoadPng(const char *name, Pic &out);
+
 // Big blocks straight from the system (the PS5's malloc heap is small)
 void *bigAlloc(size_t bytes);
 

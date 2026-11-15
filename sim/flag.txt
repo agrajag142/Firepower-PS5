@@ -1,6 +1,7 @@
 # The one-player battle (seed 1: the HQ at square 26,17, in an enemy compound with two
 # turret bunkers): knock out the bunkers, open the HQ, take the flag, bring it home
 battlefield 0
+bonus off
 tap FIRE
 hold NONE 2
 god on

@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V034";
+static const char *VERSION = "V035";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -310,6 +310,28 @@ static int mapNo = 0;                // 0..10: mapp1/t1..t5, mapp2/t1..t5, mapp3
 static int pickSel = 0;              // the battlefield picked on the choosing screen (0..10, 11: at random)
 static int forcedField = -1;         // (the PC test build: the battlefield the next battle uses)
 
+// ---- BONUS OBJECTIVES (CLASSIC off, the setting on): before the flag wins, rescue 15 of your
+// captured men from the enemy's prison camps, and destroy its radar (then the helicopters come
+// half as often), its ammunition depot and its missile launcher. Each battle puts them in
+// different enemy buildings, at random (as the original picks its headquarters).
+enum { OBJ_RADAR, OBJ_AMMO, OBJ_LAUNCHER, OBJ_PRISON, OBJ_KINDS };
+static const char *OBJ_FILES[OBJ_KINDS] = { "objectives/radar.png", "objectives/ammo.png", "objectives/launcher.png",
+                                            "objectives/prison.png" };
+static const int OBJ_STRENGTH = 40;         // hits it takes (your shells take 5: eight of them)
+static const int PRISONERS_NEEDED = 15;     // men to rescue
+static const int OBJ_BONUS = 1000;          // points for each objective done
+static const int OBJ_BOX[OBJ_KINDS][4] = { { 8, 8, 55, 55 }, { 6, 6, 58, 58 }, { 6, 6, 57, 57 }, { 4, 4, 59, 59 } };   // what blocks (Amiga pixels in its square)
+static bool bonusObjectives = true;         // the setting
+static bool bonusOn = false;                // this battle's
+static int8_t objAt[64 * 64];               // the objective standing in each square (-1: none)
+static bool objDone[3];                     // radar, ammunition depot, missile launcher
+static bool prisonersDone = false;
+static Pic objTile[OBJ_KINDS];              // each on the sand, at 2x (made once)
+static Pic objDish;                         // the radar's dish (1x: turned as it's drawn)
+static const char *objMsg = nullptr;        // RADAR DESTROYED... (a moment at the top)
+static float objMsgT = 0;
+static float incompleteT = 0;               // OBJECTIVES INCOMPLETE (home with the flag too soon)
+
 static inline int sq(int tx, int ty) { return tx * MAPN + ty; }
 static inline const TileType &typeAt(int tx, int ty) { return A.types[field[sq(tx, ty)]]; }
 static bool solidSquare(int tx, int ty) {
@@ -344,6 +366,8 @@ static bool solidAt(float x, float y, bool trees = true, bool debris = true) {
   }
   if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) return true;
   int px = (int)x - tx * TILE, py = (int)y - ty * TILE;
+  int ob = objAt[sq(tx, ty)];
+  if (ob >= 0) return px >= OBJ_BOX[ob][0] && px <= OBJ_BOX[ob][2] && py >= OBJ_BOX[ob][1] && py <= OBJ_BOX[ob][3];
   return A.tileSolid[typeAt(tx, ty).pic][py * TILE + px] != 0;
 }
 
@@ -448,7 +472,7 @@ static float menuRepeatT = 0;
 static float titleT = 0;
 static const float TITLE_LOGO_SECONDS = 10.0f;   // the new title: the picture this long,
 static const float TITLE_TABLE_SECONDS = 8.0f;   //   then the high scores this long
-static char debugText[256];
+static char debugText[1024];
 
 static inline int roundi(float v) { return (int)floorf(v + 0.5f); }
 // An angle into -PI..PI
@@ -510,6 +534,99 @@ static void updateGates(float dt) {
   }
 }
 
+// The objectives' pictures, on the sand at 2x, once
+static void makeObjectiveTiles() {
+  const Pic &sand = A.tiles[A.types[0].pic];
+  for (int k = 0; k < OBJ_KINDS; k++) {
+    Pic src;
+    if (!assetsLoadPng(OBJ_FILES[k], src) || src.w != 64 || src.h != 64) continue;
+    uint32_t *px = (uint32_t *)bigAlloc(128 * 128 * 4);
+    if (!px) continue;
+    for (int y = 0; y < 128; y++)
+      for (int x = 0; x < 128; x++) {
+        uint32_t c = src.px[(y / 2) * 64 + x / 2];
+        px[y * 128 + x] = (c >> 24) >= 128 ? (c | 0xff000000u) : sand.px[y * 128 + x];
+      }
+    objTile[k] = { 128, 128, px };
+  }
+  assetsLoadPng("objectives/radar_dish.png", objDish);
+}
+static bool objectivesReady() {
+  for (int k = 0; k < OBJ_KINDS; k++)
+    if (!objTile[k].px) return false;
+  return true;
+}
+static bool allObjectivesDone() {
+  return !bonusOn || (objDone[0] && objDone[1] && objDone[2] && prisonersDone);
+}
+
+// Where they go this battle: prison camps in enemy barracks (enough men in them for the 15, and
+// some to spare), then the radar, the depot and the launcher in its decoy bunkers or other barracks,
+// spread out over its ground
+static void setupObjectives() {
+  memset(objAt, -1, sizeof(objAt));
+  objDone[0] = objDone[1] = objDone[2] = false;
+  prisonersDone = false;
+  objMsgT = incompleteT = 0;
+  bonusOn = !classic && bonusObjectives && objectivesReady();
+  if (!bonusOn) return;
+  static int barracks[4096], hosts[4096];
+  int nb = 0, nh = 0;
+  for (int i = 0; i < MAPN * MAPN; i++) {
+    int t = field[i];
+    if (t == 29 || t == 30 || t == 31) barracks[nb++] = i;
+    else if (t == 92 && i != hqSquare && decoy[i]) hosts[nh++] = i;
+  }
+  auto shuffle = [](int *a, int n) {
+    for (int i = n - 1; i > 0; i--) {
+      int j = (int)(rnd() * (i + 1)) % (i + 1), t = a[i];
+      a[i] = a[j];
+      a[j] = t;
+    }
+  };
+  shuffle(barracks, nb);
+  int men = 0, k = 0;
+  for (; k < nb && men < PRISONERS_NEEDED + 5; k++) {   // the prison camps
+    objAt[barracks[k]] = OBJ_PRISON;
+    men += A.types[field[barracks[k]]].side & 0x0f;
+  }
+  // the rest of the barracks can take the others too, after the decoys
+  shuffle(hosts, nh);
+  for (; k < nb; k++) hosts[nh++] = barracks[k];
+  int placed[3], np = 0;
+  for (int pass = 0; pass < 3 && np < 3; pass++) {   // spread out (less so if the ground's small)
+    int minD = pass == 0 ? 10 : pass == 1 ? 5 : 0;
+    for (int h = 0; h < nh && np < 3; h++) {
+      int i = hosts[h];
+      if (objAt[i] >= 0) continue;
+      bool far = true;
+      for (int q = 0; q < np; q++) {
+        int dx = i / MAPN - placed[q] / MAPN, dy = i % MAPN - placed[q] % MAPN;
+        if (dx * dx + dy * dy < minD * minD) far = false;
+      }
+      if (!far) continue;
+      objAt[i] = (int8_t)np;          // OBJ_RADAR, OBJ_AMMO, OBJ_LAUNCHER in turn
+      field[i] = 29;                  // (an enemy building underneath: it's shelled as one, its men run out)
+      strength[i] = OBJ_STRENGTH;
+      decoy[i] = 0;
+      placed[np++] = i;
+    }
+  }
+  for (int q = np; q < 3; q++) objDone[q] = true;   // (not enough room for it: it's not asked for)
+}
+
+// One of them destroyed (from hitSquare)
+static void objectiveDestroyed(int ob, float x, float y) {
+  if (ob == OBJ_PRISON) return;   // (the men count, as they're rescued)
+  objDone[ob] = true;
+  score += OBJ_BONUS;
+  objMsg = ob == OBJ_RADAR ? "RADAR DESTROYED - FEWER HELICOPTERS" : ob == OBJ_AMMO ? "AMMUNITION DEPOT DESTROYED"
+                                                                                   : "MISSILE LAUNCHER DESTROYED";
+  objMsgT = 3;
+  addBoom(x - 14, y - 10, true);   // (it goes up with more than a building)
+  addBoom(x + 14, y + 8, true);
+}
+
 static void startBattle(int m) {
   mapNo = m;
   memcpy(field, A.maps[m], sizeof(field));
@@ -550,6 +667,7 @@ static void startBattle(int m) {
     }
     flagState = FLAG_HIDDEN;
   }
+  setupObjectives();
   nOurs = 0;
   for (int i = 0; i < MAPN * MAPN && nOurs < 256; i++)
     if (A.types[field[i]].flagsB & 0x04) ours[nOurs++] = { i, (int)(rnd() * 8) * TWO_PI / 8, 0, 0, true };
@@ -608,6 +726,8 @@ static void hitSquare(int tx, int ty, float hx, float hy) {
   bool wasTurret = t.flagsB & 0x08;
   bool wasHQ = (t.flagsB & 0x20) && !decoy[i];   // the headquarters' inside (type 81)
   uint8_t was = field[i];
+  int ob = objAt[i];
+  objAt[i] = -1;
   field[i] = t.becomes < 93 ? t.becomes : 0;
   if (was == 92) field[i] = 81;                   // a decoy (the original's 92 becomes nothing): as the real one
   strength[i] = A.types[field[i]].strength;
@@ -626,7 +746,9 @@ static void hitSquare(int tx, int ty, float hx, float hy) {
   addBoom(tx * TILE + TILE / 2.0f, ty * TILE + TILE / 2.0f, true);
   playSound(SND_BOOM2);
   // the men inside run out: bit 7 of the side byte yours, bit 6 the enemy's; how many: its low 4 bits
-  if (t.side & 0xc0) releaseMen(tx, ty, t.side & 0x0f, (t.side & 0x80) ? 0 : 1);
+  if (ob == OBJ_PRISON) releaseMen(tx, ty, t.side & 0x0f, 0);   // a prison camp: your men, free
+  else if (t.side & 0xc0) releaseMen(tx, ty, t.side & 0x0f, (t.side & 0x80) ? 0 : 1);
+  if (ob >= 0) objectiveDestroyed(ob, tx * TILE + TILE / 2.0f, ty * TILE + TILE / 2.0f);
   if (was == 34 && tank.alive) {   // one of the enemy's fuel depots: yours now
     tank.fuel = 100;
     fuelT = 2.5f;
@@ -987,7 +1109,7 @@ static void updateHelis(float dt) {
   heliTimer -= dt;
   if (heliTimer <= 0 && tank.alive) {
     if (live < HELI_MAX) spawnHeli();
-    heliTimer = HELI_EVERY + rnd() * HELI_EVERY_MORE;
+    heliTimer = (HELI_EVERY + rnd() * HELI_EVERY_MORE) * (bonusOn && objDone[OBJ_RADAR] ? 2 : 1);   // (the radar down: half as often)
   }
   for (Heli &h : helis) {
     if (!h.live) continue;
@@ -1084,6 +1206,12 @@ static void updateMen(float dt) {
         m.live = false;
         rescued++;
         score += 200;
+        if (bonusOn && !prisonersDone && rescued >= PRISONERS_NEEDED) {
+          prisonersDone = true;
+          score += OBJ_BONUS;
+          objMsg = "15 PRISONERS RESCUED";
+          objMsgT = 3;
+        }
         playSound(SND_DRIP, 0.5f);
         if (rescued % MEN_PER_MINE == 0) mines++;
         if (rescued % MEN_PER_TANK == 0) {   // an extra tank
@@ -1184,7 +1312,9 @@ static void updateFlag(float dt) {
   int tx = (int)floorf(tank.x / TILE), ty = (int)floorf(tank.y / TILE);
   bool home = tx >= 0 && ty >= 0 && tx < MAPN && ty < MAPN && (typeAt(tx, ty).flagsA & 0x08);
   if (!home) return;
-  if (flagState == FLAG_CARRIED) {
+  if (flagState == FLAG_CARRIED && !allObjectivesDone()) {
+    incompleteT = 0.5f;   // (not yet: OBJECTIVES INCOMPLETE while it's home)
+  } else if (flagState == FLAG_CARRIED) {
     state = ST_WON;
     overT = 0;
     score += 5000 + 1000 * tanksLeft;
@@ -1248,6 +1378,61 @@ static void drawGun(int i, float heading) {
   drawPic2x(g, x, y);
 }
 
+// The radar's dish, turning on its mast (drawn over its square)
+static void drawRadarDishes() {
+  if (!bonusOn || !objDish.px) return;
+  const Pic &d = objDish;
+  float ang = clockT * 1.3f, ca = cosf(ang), sa = sinf(ang);
+  const float pivX = 13.5f, pivY = 15.0f;   // (the dish's arm, on the turntable)
+  int x0 = (int)floorf(camX / TILE), y0 = (int)floorf(camY / TILE);
+  int x1 = (int)floorf((camX + VIEW_W) / TILE), y1 = (int)floorf((camY + VIEW_H) / TILE);
+  for (int tx = x0; tx <= x1; tx++)
+    for (int ty = y0; ty <= y1; ty++) {
+      if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN || objAt[sq(tx, ty)] != OBJ_RADAR) continue;
+      float cx = (tx * TILE + 31.5f - camX) * S, cy = (ty * TILE + 31.5f - camY) * S;
+      int R = 2 * 22;
+      for (int y = -R; y <= R; y++) {
+        int py = (int)cy + y;
+        if (py < 0 || py >= FB_H) continue;
+        for (int x = -R; x <= R; x++) {
+          int px = (int)cx + x;
+          if (px < 0 || px >= PLAY_W) continue;
+          // back from the screen into the dish's own picture (turned the other way)
+          float ux = (x * ca + y * sa) / S + pivX, uy = (-x * sa + y * ca) / S + pivY;
+          int ix = (int)floorf(ux), iy = (int)floorf(uy);
+          if (ix < 0 || iy < 0 || ix >= d.w || iy >= d.h) continue;
+          uint32_t c = d.px[iy * d.w + ix];
+          if ((c >> 24) < 128) continue;
+          g_frame[(size_t)py * FB_W + px] = c | 0xff000000u;
+        }
+      }
+    }
+}
+
+// The objectives, top left of the battle view: done ones ticked off
+static void drawObjectives() {
+  if (!bonusOn) return;
+  const char *lines[5];
+  bool done[5];
+  char pr[40];
+  snprintf(pr, sizeof(pr), "RESCUE PRISONERS  %d/%d", rescued < PRISONERS_NEEDED ? rescued : PRISONERS_NEEDED, PRISONERS_NEEDED);
+  lines[0] = pr;                              done[0] = prisonersDone;
+  lines[1] = "DESTROY THE RADAR";             done[1] = objDone[OBJ_RADAR];
+  lines[2] = "DESTROY THE AMMUNITION DEPOT";  done[2] = objDone[OBJ_AMMO];
+  lines[3] = "DESTROY THE MISSILE LAUNCHER";  done[3] = objDone[OBJ_LAUNCHER];
+  lines[4] = "BRING THE ENEMY FLAG HOME";     done[4] = false;
+  int x0 = 12, y0 = 52, w = 290, rowH = 22;
+  pxBlend(0, (int)(y0 * UNIT_K) - 6, (int)((x0 + w) * UNIT_K), (int)((y0 + 26 + 5 * rowH) * UNIT_K), 0, 0, 0, 0.45f);
+  drawVectorText("OBJECTIVES", x0 + 8 + vectorTextWidth("OBJECTIVES", 1.3f) / 2, y0 + 8, 1.3f, rgb565(255, 170, 70), false);
+  for (int k = 0; k < 5; k++) {
+    int y = y0 + 32 + k * rowH;
+    uint16_t c = done[k] ? rgb565(110, 220, 90) : rgb565(225, 220, 205);
+    drawRectOutline(x0 + 8, y - 6, x0 + 20, y + 6, c, 1);
+    if (done[k]) fillRect(x0 + 10, y - 4, x0 + 18, y + 4, c);
+    drawVectorText(lines[k], x0 + 30 + vectorTextWidth(lines[k], 1.15f) / 2, y, 1.15f, c, false);
+  }
+}
+
 static void drawField() {
   int x0 = (int)floorf(camX / TILE), y0 = (int)floorf(camY / TILE);
   int x1 = (int)floorf((camX + VIEW_W) / TILE), y1 = (int)floorf((camY + VIEW_H) / TILE);
@@ -1259,7 +1444,8 @@ static void drawField() {
         continue;
       }
       const TileType &tt = typeAt(tx, ty);
-      const Pic &t = tt.enemy ? A.tilesEnemy[tt.pic] : A.tiles[tt.pic];
+      int ob = objAt[sq(tx, ty)];
+      const Pic &t = ob >= 0 ? objTile[ob] : tt.enemy ? A.tilesEnemy[tt.pic] : A.tiles[tt.pic];
       int cx0 = sx < 0 ? -sx : 0, cx1 = sx + 128 > FB_W ? FB_W - sx : 128;
       if (cx1 <= cx0) continue;
       for (int y = 0; y < 128; y++) {
@@ -1315,6 +1501,11 @@ static void drawMap(int x0, int y0, int cell, float alpha) {
   // your base, and the flag once it's out
   float bx = x0 + ((startSquare / MAPN) + 0.5f) * cell, by = y0 + ((startSquare % MAPN) + 0.5f) * cell;
   pxRect((int)bx - (cell < 6 ? 4 : 7), (int)by - (cell < 6 ? 4 : 7), (int)bx + (cell < 6 ? 4 : 7), (int)by + (cell < 6 ? 4 : 7), rgba(80, 160, 255));
+  if (showFlag && bonusOn && blink > 0)   // SHOW FLAG: the objectives too (yellow; the prison camps blue)
+    for (int i = 0; i < MAPN * MAPN; i++)
+      if (objAt[i] >= 0)
+        pxCircle(x0 + (i / MAPN + 0.5f) * cell, y0 + (i % MAPN + 0.5f) * cell, cell < 6 ? 3.5f : 6,
+                 objAt[i] == OBJ_PRISON ? rgba(90, 170, 255) : rgba(255, 220, 40));
   if (showFlag && flagState == FLAG_HIDDEN && hqSquare >= 0 && blink > 0)   // SHOW FLAG: in the headquarters
     pxCircle(x0 + (hqSquare / MAPN + 0.5f) * cell, y0 + (hqSquare % MAPN + 0.5f) * cell, cell < 6 ? 4.5f : 8, rgba(255, 40, 40));
   if (flagState == FLAG_LOOSE && blink > 0)
@@ -1389,11 +1580,22 @@ static void drawHud() {
   pxBlend(0, 0, PLAY_W - 1, 44, 0, 0, 0, 0.5f);
   snprintf(buf, sizeof(buf), "BATTLEFIELD %d-%d", mapNo < 5 ? 1 : mapNo < 10 ? 2 : 3, mapNo < 10 ? mapNo % 5 + 1 : 1);
   drawVectorText(buf, 90, 15, 1.4f, ink, false);
-  const char *goal = flagState == FLAG_HIDDEN ? "FIND THE ENEMY HQ AND CAPTURE THE ENEMY FLAG"
+  const char *goal = bonusOn && flagState != FLAG_CARRIED && !allObjectivesDone() ? "COMPLETE THE OBJECTIVES AND CAPTURE THE ENEMY FLAG"
+                     : bonusOn && !allObjectivesDone() ? "COMPLETE THE OBJECTIVES, THEN BRING THE FLAG HOME"
+                     : flagState == FLAG_HIDDEN ? "FIND THE ENEMY HQ AND CAPTURE THE ENEMY FLAG"
                      : flagState == FLAG_LOOSE ? "THE ENEMY FLAG IS LOOSE - PICK IT UP"
                                                : "BRING THE FLAG HOME TO YOUR BASE";
   drawVectorText(goal, PLAY_CX + 60, 15, 1.4f, flagState == FLAG_CARRIED ? rgb565(255, 230, 90) : rgb565(230, 230, 230), false);
   drawVectorText(VERSION, 30, 708, 1.1f, dim, false);
+  drawObjectives();
+  if (incompleteT > 0) {
+    incompleteT -= 1 / 60.0f;
+    drawVectorText("OBJECTIVES INCOMPLETE", PLAY_CX, 290, 2.6f, rgb565(255, 90, 60), true);
+  }
+  if (objMsgT > 0 && objMsg) {
+    objMsgT -= 1 / 60.0f;
+    drawVectorText(objMsg, PLAY_CX, 250, 2.2f, rgb565(120, 230, 100), true);
+  }
   if (tank.alive && tank.fuel < 15 && fmodf(clockT, 0.8f) < 0.5f)
     drawVectorText(tank.fuel <= 0 ? "OUT OF FUEL - BACK TO YOUR GARAGE" : "LOW FUEL", PLAY_CX, 200, 2.2f, rgb565(255, 90, 60), true);
   if (fuelT > 0) {
@@ -1426,7 +1628,11 @@ static void drawOver(float dt) {
   drawVectorText(buf, 640, 390, 2.2f, rgb565(255, 255, 255), true);
   snprintf(buf, sizeof(buf), "INFLICTED: %d DESTROYED  HELI %d  MEN %d", destroyed, helisDown, menKilled);
   drawVectorText(buf, 640, 440, 1.8f, rgb565(220, 220, 220), false);
-  snprintf(buf, sizeof(buf), "RESCUED: %d MEN", rescued);
+  if (bonusOn)
+    snprintf(buf, sizeof(buf), "RESCUED: %d MEN    OBJECTIVES: %d OF 4", rescued,
+             (int)objDone[0] + (int)objDone[1] + (int)objDone[2] + (int)prisonersDone);
+  else
+    snprintf(buf, sizeof(buf), "RESCUED: %d MEN", rescued);
   drawVectorText(buf, 640, 480, 1.8f, rgb565(220, 220, 220), false);
   snprintf(buf, sizeof(buf), "CASUALTIES: TANKS %d  MEN %d", tanksLost, menLost);
   drawVectorText(buf, 640, 520, 1.8f, rgb565(220, 220, 220), false);
@@ -1725,7 +1931,7 @@ static void drawRoofs() {
 // ============================================================ the settings menu
 // Options opens it, on the title screen or in the battle (which waits): the music
 // on or off, its volume, the sounds' volume, and the ways out. Kept on the PS5.
-enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RANDOM, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
+enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RANDOM, MI_BONUS, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
 static int menuSel = 0;
 static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
 static bool quitAsked = false;      // the platform closes the app
@@ -1735,14 +1941,15 @@ static void loadSettings() {
   if (!path) return;
   FILE *f = fopen(path, "rb");
   if (!f) return;
-  uint8_t b[6] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0, 1 };
-  if (fread(b, 1, 6, f) >= 3) {
+  uint8_t b[7] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0, 1, 1 };
+  if (fread(b, 1, 7, f) >= 3) {
     musicOn.store(b[0] != 0);
     musicVol.store(b[1] > 100 ? 100 : b[1]);
     sfxVol.store(b[2] > 100 ? 100 : b[2]);
     classic = b[3] != 0;
     showFlag = b[4] != 0;
     randomField = b[5] != 0;
+    bonusObjectives = b[6] != 0;
   }
   fclose(f);
 }
@@ -1754,15 +1961,15 @@ static void saveSettings() {
 #endif
   FILE *f = fopen(path, "wb");
   if (!f) return;
-  uint8_t b[6] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag,
-                   (uint8_t)randomField };
-  fwrite(b, 1, 6, f);
+  uint8_t b[7] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag,
+                   (uint8_t)randomField, (uint8_t)bonusObjectives };
+  fwrite(b, 1, 7, f);
   fclose(f);
 }
 
 static bool menuItemShown(int i) {
   if (i == MI_TITLE) return state == ST_PLAY;   // (no battle to leave on the title)
-  if (i == MI_RANDOM) return !classic;          // (classic: always at random)
+  if (i == MI_RANDOM || i == MI_BONUS) return !classic;   // (classic: always at random, no objectives)
   return true;
 }
 
@@ -1807,6 +2014,8 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
     classic = !classic;
   } else if (menuSel == MI_RANDOM && (go || side)) {
     randomField = !randomField;
+  } else if (menuSel == MI_BONUS && (go || side)) {
+    bonusObjectives = !bonusObjectives;
   } else if (menuSel == MI_SHOWFLAG && (go || side)) {
     showFlag = !showFlag;
   } else if ((menuSel == MI_MUSIC_VOL || menuSel == MI_SFX_VOL) && side) {
@@ -1850,14 +2059,15 @@ static void drawMenu() {
     bool sel = i == menuSel;
     if (sel) fillRect(x0 + 16, y - ROW / 2 + 2, x1 - 16, y + ROW / 2 - 2, rgb565(90, 66, 30));
     uint16_t c = sel ? rgb565(255, 225, 120) : rgb565(225, 220, 205);
-    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_RANDOM ? "RANDOM BATTLEFIELD" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
+    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_RANDOM ? "RANDOM BATTLEFIELD" : i == MI_BONUS ? "BONUS OBJECTIVES" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
                         i == MI_RESUME ? "RESUME" :
                         i == MI_TITLE ? (quitArmed == i ? "X AGAIN TO QUIT TO TITLE" : "QUIT TO TITLE") :
                                         (quitArmed == i ? "X AGAIN TO QUIT THE GAME" : "QUIT GAME");
     if (i <= MI_SHOWFLAG) {
       drawVectorText(label, x0 + 36 + vectorTextWidth(label, TS) / 2, y, TS, c, true);
       if (i != MI_MUSIC_VOL && i != MI_SFX_VOL) {
-        bool on = i == MI_MUSIC ? musicOn.load() : i == MI_CLASSIC ? classic : i == MI_RANDOM ? randomField : showFlag;
+        bool on = i == MI_MUSIC ? musicOn.load() : i == MI_CLASSIC ? classic : i == MI_RANDOM ? randomField
+                : i == MI_BONUS ? bonusObjectives : showFlag;
         const char *v = on ? "ON" : "OFF";
         drawVectorText(v, x1 - 40 - vectorTextWidth(v, TS) / 2, y, TS, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
       } else {   // a bar of 20 steps and the number
@@ -2029,6 +2239,7 @@ void gameInit(uint32_t seed, const char *dir) {
   gfxInit();
   assetsLoad(dir);
   makeSynthSounds();
+  makeObjectiveTiles();
   loadSettings();
   loadHiScores();
   state = ST_TITLE;
@@ -2128,6 +2339,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   camY = roundf(camY);
 
   drawField();
+  drawRadarDishes();
   for (int k = 0; k < nTurrets; k++)
     if (isTurret(turrets[k].i)) drawGun(turrets[k].i, turrets[k].heading);
   for (int k = 0; k < nOurs; k++)
@@ -2177,6 +2389,12 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
              for (Man &m : men) n += m.live;
              return n;
            }(), aboard, rescued, menKilled, menLost, tank.fuel, mines, heliShots, heliShotsHit);
+  {   // (the objectives: where they are, done)
+    size_t L = strlen(debugText);
+    for (int i = 0; i < MAPN * MAPN && L < sizeof(debugText) - 24; i++)
+      if (objAt[i] >= 0) L += snprintf(debugText + L, sizeof(debugText) - L, " obj%d@%d,%d", objAt[i], i / MAPN, i % MAPN);
+    snprintf(debugText + L, sizeof(debugText) - L, " done %d%d%d%d", objDone[0], objDone[1], objDone[2], prisonersDone);
+  }
 }
 
 const char *gameDebug() { return debugText; }
@@ -2207,3 +2425,4 @@ void gameDebugMan(float x, float y, int side) {
 }
 void gameDebugFuel(float f) { tank.fuel = f; }
 void gameDebugArmour(int a) { tank.armour = a; }
+void gameDebugBonus(bool on) { bonusObjectives = on; }

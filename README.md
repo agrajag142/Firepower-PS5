@@ -10,6 +10,25 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 035: bonus objectives (CLASSIC off)
+
+- BONUS OBJECTIVES in the settings (on to start; only there with CLASSIC off).
+  Before the flag wins the battle:
+  - rescue 15 prisoners: your men, held in the enemy's prison camps (shell a
+    camp open and they run out, to be picked up and taken to your first-aid
+    station as any of your men)
+  - destroy the enemy's radar installation (its dish turning): once it's
+    gone the helicopters come half as often
+  - destroy its ammunition depot
+  - destroy its missile launcher
+- New pictures for them, drawn in the original's colours and style
+  (`assets/objectives/`, made by `tools/draw_objectives.py`). Each battle puts
+  them in different enemy buildings (decoy bunkers and barracks), spread out,
+  as the original picks its headquarters
+- The list top left, each ticked off as it's done (1000 points each); home
+  with the flag too soon: OBJECTIVES INCOMPLETE. SHOW FLAG shows them on the
+  radar too (yellow; the prison camps blue). The final report counts them
+
 ## Version 034: low armour (CLASSIC off)
 
 - As QUANTUM LOCKDOWN: from 40% armour down a red haze beats round your tank,
@@ -343,6 +362,7 @@ firepower/build.sh sim firepower/sim/pick.txt    # RANDOM BATTLEFIELD off: choos
 firepower/build.sh sim firepower/sim/hiscore.txt   # a won battle into the high score table
 firepower/build.sh sim firepower/sim/tanks.txt   # choosing the tank: the Shadow
 firepower/build.sh sim firepower/sim/lowarmour.txt   # low armour: the red haze, the edges, the heartbeat
+firepower/build.sh sim firepower/sim/objectives.txt   # bonus objectives: the radar shelled, a prison camp opened
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

@@ -1,0 +1,26 @@
+# BONUS OBJECTIVES (CLASSIC off): the list, the radar (its dish turning), shelled; a prison camp opened
+battlefield 0
+tap FIRE
+hold NONE 2
+god on
+place 3470 736 4
+hold NONE 20
+shot obj_radar
+hold NONE 20
+shot obj_radar_turned
+hold FIRE 260
+hold NONE 40
+shot obj_radar_down
+place 3424 1520 0
+hold NONE 2
+shot obj_prison
+hold FIRE 60
+hold NONE 120
+shot obj_prison_open
+place 3424 1700 0
+hold NONE 2
+tap MAP
+shot obj_settings
+tap MAP
+place 1376 760 0
+hold NONE 2
