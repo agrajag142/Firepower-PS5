@@ -15,5 +15,7 @@ tap RIGHT
 tap RIGHT
 shot pick_chosen
 tap FIRE
+hold NONE 20
+tap FIRE
 hold NONE 2
 shot pick_battle

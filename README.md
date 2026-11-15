@@ -10,6 +10,18 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 032: the three tanks
+
+- CHOOSE YOUR TANK after the battlefield (as the original): the Scorpion, the
+  standard tank and the Shadow, each with the original's numbers (its
+  `sub_08710`): speed 12 / 10 / 8, armour 30 / 50 / 40, fuel 27 / 29 / 39, men
+  it carries 10 / 15 / 35, mines 10 / 15 / 20
+- The standard tank drives and lasts as before; the others are faster or
+  slower, go further or less far on a tank of fuel, and take more or less from
+  each hit, by the original's ratios
+- The men a tank carries and its mines are the original's now (the standard
+  tank: 15 men, 15 mines; it was 6 and 3)
+
 ## Version 031: high scores (CLASSIC off)
 
 - A table of the ten best (initials, score, battlefield, won or not), kept on
@@ -313,10 +325,11 @@ firepower/build.sh sim firepower/sim/men.txt     # men out of a building, aboard
 firepower/build.sh sim firepower/sim/extra.txt   # 15 men rescued: an extra tank
 firepower/build.sh sim firepower/sim/fuel.txt    # out of fuel, an enemy depot, the garage
 firepower/build.sh sim firepower/sim/garage.txt  # the garage's walls: out only at the bottom
-firepower/build.sh sim firepower/sim/full.txt    # the tank full: the other men wait clear of it
+firepower/build.sh sim firepower/sim/full.txt    # the Scorpion full (10): the other men wait clear of it
 firepower/build.sh sim firepower/sim/showflag.txt   # SHOW FLAG: the flag on the radar
 firepower/build.sh sim firepower/sim/pick.txt    # RANDOM BATTLEFIELD off: choosing the battlefield
 firepower/build.sh sim firepower/sim/hiscore.txt   # a won battle into the high score table
+firepower/build.sh sim firepower/sim/tanks.txt   # choosing the tank: the Shadow
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

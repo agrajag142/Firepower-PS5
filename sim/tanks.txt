@@ -1,0 +1,12 @@
+# Choosing the tank: X on the title (a battlefield at random), then the three tanks; the Shadow
+tap FIRE
+hold NONE 20
+shot tanks_standard
+tap RIGHT
+hold NONE 30
+shot tanks_shadow
+tap FIRE
+hold NONE 2
+shot tanks_battle
+stick 0 1 120
+shot tanks_drive

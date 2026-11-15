@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V031";
+static const char *VERSION = "V032";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -124,7 +124,7 @@ static const int PLAY_W = PANEL_X0;                             // the battle vi
 static const float VIEW_W = PLAY_W / S, VIEW_H = FB_H / S;      // ~700 x 540 Amiga pixels in view
 static const float PLAY_CX = PLAY_W / 2 / UNIT_K;               // its middle, in drawing units
 
-static const float TANK_SPEED = 72.0f;     // forward, Amiga pixels a second
+static const float TANK_SPEED = 72.0f;     // forward, Amiga pixels a second (the standard tank: the others by their speed)
 static const float TANK_REVERSE = 40.0f;
 static const float TANK_ACCEL = 160.0f;
 static const float TANK_TURN = 3.2f;       // radians a second
@@ -153,11 +153,20 @@ static const float MAN_SPEED = 9.0f;       // Amiga pixels a second (running: x1
 static const float UNLOAD_EVERY = 0.45f;
 static const int MEN_PER_TANK = 15;        // rescued men for an extra tank
 static const int MEN_PER_MINE = 5;         // rescued men for an extra mine
-static const int MINES = 3;                // mines to start with (laid in the two-player game, to come)
-static const float FUEL_RANGE = 9000.0f;   // Amiga pixels a full tank drives (about two minutes)
+static const float FUEL_RANGE = 9000.0f;   // Amiga pixels a full tank drives (about two minutes; the standard tank: the others by their fuel)
 static const float FUEL_EMPTY_SPEED = 0.25f;   // how fast it crawls with none
 static const float REFUEL_RATE = 25.0f;    // in your garage: fuel a second (of 100)   // seconds between men getting out at the first-aid station
-static const int TANK_ROOM = 6;            // men your tank can carry
+// The three tanks, as the original's sub_08710 sets them up (its numbers: speed, armour, fuel,
+// the men it carries, the mines it starts with). The standard tank's are the settings above;
+// the others are scaled from them by the original's ratios.
+struct TankKind { const char *name; int speed, armour, fuel, room, mines; };
+static const TankKind KINDS[3] = {
+  { "SCORPION", 12, 30, 27, 10, 10 },   // gr/scorp: fast, lightly armoured
+  { "STANDARD", 10, 50, 29, 15, 15 },   // gr/tank0: the all-rounder, heaviest armour
+  { "SHADOW",    8, 40, 39, 35, 20 },   // gr/shadow: slow, the furthest on a tank of fuel, carries most
+};
+static int tankKind = 1;   // the one chosen for this battle
+static const TankKind &kind() { return KINDS[tankKind]; }
 static const float MEN_KEEP_BACK = 60;     // with it full, your men wait this far from it (pixels)
 static const float REPAIR_EVERY = 0.25f;   // in your base without the flag: +5 armour this often (the original: 5)
 static const float HELI_FIRST = 25.0f;     // seconds into a battle before the first helicopter
@@ -401,7 +410,7 @@ static Man men[200];
 static Splat splats[96];
 static int nSplats = 0, aboard = 0, rescued = 0, menLost = 0, menKilled = 0;
 static float unloadT = 0, extraT = 0, fuelT = 0;   // (fuelT: the REFUELLED message)
-static int mines = MINES;   // (extraT: the EXTRA TANK message, while > 0)
+static int mines = 15;   // (extraT: the EXTRA TANK message, while > 0)
 static float aidX = 20, aidY = 32;   // the red cross in the first-aid station's square (from its picture)
 static Heli helis[HELI_MAX];
 static int heliShots = 0, heliShotsHit = 0;   // (the PC test build's report)
@@ -421,7 +430,7 @@ static float rnd() {   // 0..1
 }
 static float clockT = 0;
 
-enum State { ST_TITLE, ST_PICK, ST_PLAY, ST_OVER, ST_WON, ST_ENTRY };
+enum State { ST_TITLE, ST_PICK, ST_TANK, ST_PLAY, ST_OVER, ST_WON, ST_ENTRY };
 static State state = ST_TITLE;
 static float overT = 0;   // on the game over screen
 static bool menuOpen = false;    // the settings menu (Options): the battle waits
@@ -555,7 +564,7 @@ static void startBattle(int m) {
   unloadT = 0;
   extraT = 0;
   fuelT = 0;
-  mines = MINES;
+  mines = kind().mines;
   {   // where the red cross is in the first-aid station's picture
     const Pic &p = A.tiles[A.types[24].pic];
     float sxs = 0, sys = 0;
@@ -636,14 +645,14 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
   float mag = sqrtf(sx * sx + sy * sy);
   if (held & BTN_REVERSE) {
     // Square: straight back, the way it faces
-    want = -TANK_REVERSE;
+    want = -TANK_REVERSE * kind().speed / 10;
   } else if (mag > 0.35f) {
     // the stick: point it where to go; the tank turns that way and drives once it faces it
     float target = atan2f(sx, -sy);
     float diff = wrapAngle(target - tank.heading);
     float turn = TANK_TURN * dt;
     tank.heading += diff > turn ? turn : (diff < -turn ? -turn : diff);
-    if (fabsf(diff) < 0.8f) want = TANK_SPEED * (mag > 1 ? 1 : mag) * cosf(diff);
+    if (fabsf(diff) < 0.8f) want = TANK_SPEED * kind().speed / 10 * (mag > 1 ? 1 : mag) * cosf(diff);
   }
   tank.heading = wrapAngle(tank.heading);
   if (tank.heading < 0) tank.heading += TWO_PI;
@@ -667,7 +676,7 @@ static void moveTank(float dt, uint32_t held, float sx, float sy) {
   else tank.speed *= 0.5f;
   // the fuel it used, for how far it went
   float moved = sqrtf((tank.x - ox) * (tank.x - ox) + (tank.y - oy) * (tank.y - oy));
-  tank.fuel -= moved / FUEL_RANGE * 100;
+  tank.fuel -= moved / (FUEL_RANGE * kind().fuel / 29) * 100;
   if (tank.fuel < 0) tank.fuel = 0;
 }
 
@@ -724,7 +733,7 @@ static bool godMode = false;   // (the PC test build)
 static void tankHit(int damage, float x, float y) {
   if (!tank.alive) return;
   if (godMode) damage = 0;
-  tank.armour -= damage;
+  tank.armour -= roundi(damage * 50.0f / kind().armour);   // (the armour's in hundredths of the tank's own)
   addBoom(x, y, false);
   playSound(SND_BOOM2, 0.5f);
   if (tank.armour <= 0) {
@@ -1003,10 +1012,10 @@ static void updateMen(float dt) {
       m.dx = -tx / d;
       m.dy = -ty / d;
       speed *= 1.5f;
-    } else if (tank.alive && m.side == 0 && aboard >= TANK_ROOM && d < MEN_KEEP_BACK) {   // full: yours keep clear of it
+    } else if (tank.alive && m.side == 0 && aboard >= kind().room && d < MEN_KEEP_BACK) {   // full: yours keep clear of it
       m.dx = -tx / d;
       m.dy = -ty / d;
-    } else if (tank.alive && m.side == 0 && aboard >= TANK_ROOM && d < MEN_KEEP_BACK + 30) {   // and wait there
+    } else if (tank.alive && m.side == 0 && aboard >= kind().room && d < MEN_KEEP_BACK + 30) {   // and wait there
       speed = 0;
     } else if (tank.alive && m.side == 0 && d < 160 && !moving) {   // yours run to it
       m.dx = tx / d;
@@ -1026,7 +1035,7 @@ static void updateMen(float dt) {
     }
     // your tank: the enemy's men are run over; yours too if it's moving - stopped, it takes them aboard
     if (!tank.alive || d > 11) continue;
-    if (m.side == 0 && !moving && aboard < TANK_ROOM) {
+    if (m.side == 0 && !moving && aboard < kind().room) {
       aboard++;
       m.live = false;
       playSound(SND_DRIP, 0.7f);
@@ -1308,7 +1317,7 @@ static void drawHud() {
     if (fmodf(extraT, 0.5f) < 0.35f) drawVectorText("EXTRA TANK!", PLAY_CX, 160, 3.0f, rgb565(255, 230, 90), true);
   }
   if (aboard) {
-    snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d - STOP RIGHT OF THE FIRST-AID STATION", aboard, TANK_ROOM);
+    snprintf(buf, sizeof(buf), "MEN ABOARD %d/%d - STOP RIGHT OF THE FIRST-AID STATION", aboard, kind().room);
     pxBlend(0, FB_H - 64, PLAY_W - 1, FB_H - 20, 0, 0, 0, 0.45f);
     drawVectorText(buf, PLAY_CX, 694, 1.4f, rgb565(255, 230, 90), false);
   }
@@ -1796,6 +1805,7 @@ static void fieldName(int m, char *buf, int n) {
   snprintf(buf, n, "BATTLEFIELD %d-%d", m < 5 ? 1 : m < 10 ? 2 : 3, m < 10 ? m % 5 + 1 : 1);
 }
 
+static void chooseTank(int field);   // (the tank, below)
 static void updatePick(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   if (pressed & BTN_BACK) { state = ST_TITLE; titleT = 0; return; }
   uint32_t dirs = held & (BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN);
@@ -1816,7 +1826,7 @@ static void updatePick(float dt, uint32_t held, uint32_t pressed, float sx, floa
   if (step & BTN_UP) row = (row + 2) % 3;
   if (step & BTN_DOWN) row = (row + 1) % 3;
   pickSel = row * PICK_COLS + col;
-  if (pressed & BTN_FIRE) startBattle(pickSel == 11 ? randomField5() : pickSel);
+  if (pressed & BTN_FIRE) chooseTank(pickSel == 11 ? randomField5() : pickSel);
 }
 
 static void drawPick() {
@@ -1854,6 +1864,77 @@ static void drawPick() {
 
 void gameDebugBattlefield(int m) { forcedField = m; }
 
+// ============================================================ choosing the tank
+// The original's three, side by side: each turning slowly, its name and what it's like
+static int tankField = 0;          // the battlefield the chosen tank goes to
+static int forcedTank = -1;        // (the PC test build: the tank the next battle uses)
+static float tankT = 0;
+
+static void chooseTank(int field) {
+  tankField = field;
+  state = ST_TANK;
+  tankT = 0;
+  menuPrevDirs = BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN;
+}
+
+static void updateTank(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
+  tankT += dt;
+  if (pressed & BTN_BACK) { state = ST_TITLE; titleT = 0; return; }
+  uint32_t dirs = held & (BTN_LEFT | BTN_RIGHT);
+  if (sx < -0.5f) dirs |= BTN_LEFT;
+  if (sx > 0.5f) dirs |= BTN_RIGHT;
+  uint32_t step = dirs & ~menuPrevDirs;
+  menuPrevDirs = dirs;
+  if (step & BTN_LEFT) { tankKind = (tankKind + 2) % 3; playSound(SND_DRIP, 0.5f); }
+  if (step & BTN_RIGHT) { tankKind = (tankKind + 1) % 3; playSound(SND_DRIP, 0.5f); }
+  if ((pressed & BTN_FIRE) && tankT > 0.2f) startBattle(tankField);
+}
+
+static void drawTank(float dt) {
+  (void)dt;
+  pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
+  drawVectorText("CHOOSE YOUR TANK", 640, 50, 3.0f, rgb565(230, 160, 70), true);
+  char where[40];
+  fieldName(tankField, where, sizeof(where));
+  drawVectorText(where, 640, 92, 1.5f, rgb565(170, 165, 150), false);
+  static const char *what[3] = { "FAST, BUT LIGHTLY ARMOURED", "THE ALL-ROUNDER: THE HEAVIEST ARMOUR", "SLOW: GOES FURTHEST, CARRIES MOST" };
+  const int maxv[5] = { 12, 50, 39, 35, 20 };
+  const char *lab[5] = { "SPEED", "ARMOUR", "FUEL", "MEN", "MINES" };
+  for (int k = 0; k < 3; k++) {
+    const TankKind &t = KINDS[k];
+    bool sel = k == tankKind;
+    int cx = 640 + (k - 1) * 400;   // units
+    int x0 = cx - 180, x1 = cx + 180, y0 = 125, y1 = 655;
+    fillRect(x0, y0, x1, y1, sel ? rgb565(48, 36, 22) : rgb565(22, 18, 14));
+    drawRectOutline(x0, y0, x1, y1, sel ? rgb565(255, 170, 70) : rgb565(80, 64, 45), sel ? 3 : 1);
+    // the tank, big, turning (the chosen one turns; the others face up)
+    const PicSet &ps = k == 0 ? A.scorp : k == 2 ? A.shadow : A.tank;
+    if (ps.n >= 16) {
+      int f = sel ? (int)(tankT * 4) % 16 : 0;
+      const Pic &p = ps.pic[f];
+      float kk = 7;
+      drawPicK(p, cx * UNIT_K - p.w * kk / 2, 270 * UNIT_K - p.h * kk / 2, kk);
+    }
+    drawVectorText(t.name, cx, 420, 2.6f, sel ? rgb565(255, 225, 120) : rgb565(200, 195, 185), true);
+    drawVectorText(what[k], cx, 452, 1.15f, rgb565(170, 165, 150), false);
+    const int v[5] = { t.speed, t.armour, t.fuel, t.room, t.mines };
+    for (int i = 0; i < 5; i++) {
+      int y = 495 + i * 31;
+      drawVectorText(lab[i], x0 + 30 + vectorTextWidth(lab[i], 1.3f) / 2, y, 1.3f, rgb565(200, 190, 175), false);
+      int bx0 = x0 + 125, bx1 = x1 - 60;
+      fillRect(bx0, y - 7, bx1, y + 7, rgb565(12, 10, 8));
+      fillRect(bx0, y - 7, bx0 + (bx1 - bx0) * v[i] / maxv[i], y + 7, sel ? rgb565(240, 160, 60) : rgb565(140, 100, 50));
+      char num[8];
+      snprintf(num, sizeof(num), "%d", v[i]);
+      drawVectorText(num, x1 - 30, y, 1.4f, sel ? rgb565(255, 225, 120) : rgb565(190, 185, 175), false);
+    }
+  }
+  drawVectorText("LEFT / RIGHT: CHOOSE    X: TO BATTLE    CIRCLE: BACK", 640, 700, 1.3f, rgb565(170, 165, 150), false);
+}
+
+void gameDebugTankKind(int k) { forcedTank = k; }
+
+
 // ============================================================ the frame
 void gameInit(uint32_t seed, const char *dir) {
   rng = seed | 1;
@@ -1885,8 +1966,14 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   }
   if (state == ST_TITLE) {
     if (A.ok && (pressed & BTN_FIRE)) {
-      if (forcedField >= 0) startBattle(forcedField);
-      else if (classic || randomField) startBattle(randomField5());
+      if (forcedField >= 0) {
+        if (forcedTank >= 0) tankKind = forcedTank;
+        startBattle(forcedField);
+      } else if (classic || randomField) {
+        chooseTank(randomField5());
+        drawTank(dt);
+        return;
+      }
       else {   // the battlefields, to choose from
         state = ST_PICK;
         menuPrevDirs = BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_DOWN;
@@ -1900,8 +1987,15 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   }
   if (state == ST_PICK) {
     updatePick(dt, held, pressed, sx, sy);
+    if (state == ST_PICK) drawPick();
+    else if (state == ST_TANK) drawTank(dt);
+    else drawTitle(dt);
+    return;
+  }
+  if (state == ST_TANK) {
+    updateTank(dt, held, pressed, sx, sy);
     if (state != ST_PLAY) {
-      if (state == ST_PICK) drawPick();
+      if (state == ST_TANK) drawTank(dt);
       else drawTitle(dt);
       return;
     }
@@ -1962,7 +2056,8 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     if (h.live && A.heli.n > 33) drawPic2x(A.heli.pic[18 + frameOf(h.heading)], h.x + 18, h.y + 26);
   const Pic *flagPic = A.numbers.n > 11 ? &A.numbers.pic[11] : nullptr;
   if (flagPic && flagState == FLAG_LOOSE) drawPic2x(*flagPic, flagX, flagY - 2 * fabsf(sinf(clockT * 4)));
-  if (tank.alive) drawPic2x(A.tank.pic[frameOf(tank.heading)], tank.x, tank.y);
+  const PicSet &tankPics = tankKind == 0 ? A.scorp : tankKind == 2 ? A.shadow : A.tank;
+  if (tank.alive && tankPics.n >= 16) drawPic2x(tankPics.pic[frameOf(tank.heading)], tank.x, tank.y);
   drawRoofs();
   if (flagPic && flagState == FLAG_CARRIED && tank.alive) drawPic2x(*flagPic, tank.x + 6, tank.y - 16);
   // and the helicopters themselves, over everything, their rotors turning

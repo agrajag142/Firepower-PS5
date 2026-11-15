@@ -1,18 +1,24 @@
-# The tank full (6 aboard): your other men wait clear of it, not crowding round it
+# The tank full (the Scorpion: 10 aboard): your other men wait clear of it, not crowding round it
 battlefield 0
+tank 0
 shot title_new
 tap FIRE
 hold NONE 2
 god on
-place 1250 950 0
-man 1280 950 0
-man 1220 950 0
-man 1250 980 0
-man 1250 920 0
-man 1280 980 0
-man 1220 920 0
-man 1290 930 0
-man 1210 970 0
-man 1270 990 0
-hold NONE 600
+place 1500 1150 0
+man 1530 1150 0
+man 1470 1150 0
+man 1500 1180 0
+man 1500 1120 0
+man 1530 1180 0
+man 1470 1120 0
+man 1540 1130 0
+man 1460 1170 0
+man 1520 1190 0
+man 1480 1190 0
+man 1540 1110 0
+man 1460 1130 0
+man 1525 1165 0
+man 1475 1165 0
+hold NONE 1200
 shot full_wait
