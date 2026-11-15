@@ -10,6 +10,12 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 037
+
+- Every tune loops: some MODs end themselves for good (a pattern break back
+  to its own place in the song, or a stop command) and went quiet for the
+  rest of the game; those now go back to the start
+
 ## Version 036
 
 - The 15 prisoners can't become impossible: if too few of your men are left to

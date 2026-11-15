@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V036";
+static const char *VERSION = "V037";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -212,10 +212,38 @@ static void (*const modGain[TUNES])(long) = { micromod_set_gain, micromod2_set_g
 static void (*const modPos[TUNES])(long) = { micromod_set_position, micromod2_set_position };
 static void (*const modAudio[TUNES])(short *, long) = { micromod_get_audio, micromod2_get_audio };
 
+// Some tunes end themselves for good: a pattern break (Bxx) back to its own place in the song,
+// on an empty last pattern, or a stop (F00) - played as they are, they go quiet and stay quiet.
+// Those are made to go back to the start (or to the tune's restart place), so every tune loops.
+static void loopTune(signed char *data, long len) {
+  uint8_t *d = (uint8_t *)data;
+  int chans = 4;
+  const char *tag = (const char *)d + 1080;
+  if (!memcmp(tag, "6CHN", 4)) chans = 6;
+  else if (!memcmp(tag, "8CHN", 4) || !memcmp(tag, "FLT8", 4)) chans = 8;
+  else if (tag[2] == 'C' && tag[3] == 'H' && tag[0] >= '0' && tag[0] <= '9' && tag[1] >= '0' && tag[1] <= '9')
+    chans = (tag[0] - '0') * 10 + (tag[1] - '0');
+  int songLen = d[950], restart = d[951];
+  if (songLen < 1 || songLen > 128) return;
+  if (restart >= songLen) restart = 0;
+  for (int pos = 0; pos < songLen; pos++) {
+    int pat = d[952 + pos];
+    for (int row = 0; row < 64; row++)
+      for (int c = 0; c < chans; c++) {
+        long o = 1084 + ((long)pat * 64 + row) * chans * 4 + c * 4;
+        if (o + 4 > len) return;
+        int eff = d[o + 2] & 15, par = d[o + 3];
+        if (eff == 0xB && par == pos) d[o + 3] = (uint8_t)restart;   // (a jump to itself: the end)
+        if (eff == 0xF && par == 0) d[o + 2] &= 0xf0, d[o + 3] = 0;   // (a stop: just carry on)
+      }
+  }
+}
+
 void gameSetTune(int which, signed char *data, long len) {
   if (which < 0 || which >= TUNES || !data || len < 1084) return;
   long need = modLen[which](data);
   if (need < 0 || need > len) return;            // not a MOD, or cut short: no music
+  loopTune(data, need);
   if (modInit[which](data, 48000) != 0) return;
   modGain[which](64);
   tuneReady[which] = true;
