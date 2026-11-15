@@ -10,6 +10,14 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 039: smoother scrolling
+
+- The view scrolls by the TV's own pixels (it went by the Amiga's, two at a
+  time, so at the tank's speed it stepped 2, 2, 4, 2, 2... pixels: a judder
+  that made things seem to flicker moving up and down); now 2, 3, 2, 3...
+- Each frame moves the game on by exactly one frame of the TV's (1/60 s),
+  not by the clock's reading, which wobbles a little
+
 ## Version 038
 
 - The end of a battle (CLASSIC off): A FALLEN SOLDIER when your tanks are all

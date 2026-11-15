@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V038";
+static const char *VERSION = "V039";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -2490,8 +2490,10 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
   camY = tank.y - VIEW_H / 2;
   camX = camX < 0 ? 0 : (camX > WORLD - VIEW_W ? WORLD - VIEW_W : camX);
   camY = camY < 0 ? 0 : (camY > WORLD - VIEW_H ? WORLD - VIEW_H : camY);
-  camX = roundf(camX);
-  camY = roundf(camY);
+  // to the TV's own pixels (half an Amiga pixel), from the tank's: the view scrolls a pixel or
+  // two each frame, evenly, rather than jumping two pixels at a time, and the tank keeps its place
+  camX = (roundf(tank.x * S) - roundf((tank.x - camX) * S)) / S;
+  camY = (roundf(tank.y * S) - roundf((tank.y - camY) * S)) / S;
 
   drawField();
   drawRadarDishes();

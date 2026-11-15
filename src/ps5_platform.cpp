@@ -15,6 +15,7 @@
 
 #include <pthread.h>
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <stdlib.h>
@@ -295,7 +296,12 @@ int main() {
     sceVideoOutWaitVblank(video);
     padRead();
     uint64_t now = nowUs();
-    float dt = (now - last) / 1e6f;
+    // the time since the last frame, in whole frames of the TV's (60 a second): the clock's own
+    // small wobbles would move everything unevenly; a missed frame still counts as two
+    float frames = roundf((now - last) / 1e6f * 60.0f);
+    if (frames < 1) frames = 1;
+    if (frames > 4) frames = 4;
+    float dt = frames / 60.0f;
     last = now;
     uint32_t b = gameButtons();
     float sx, sy;
