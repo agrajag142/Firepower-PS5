@@ -10,6 +10,11 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 040
+
+- The home screen icon: the soldier in the O of the new title, in place of the
+  placeholder tank
+
 ## Version 039: smoother scrolling
 
 - The view scrolls by the TV's own pixels (it went by the Amiga's, two at a
