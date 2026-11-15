@@ -27,3 +27,5 @@ place 1440 820 0
 hold UP 120
 hold NONE 30
 shot won
+hold NONE 120
+shot won_report

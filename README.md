@@ -10,6 +10,13 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 038
+
+- The end of a battle (CLASSIC off): A FALLEN SOLDIER when your tanks are all
+  gone, MISSION COMPLETE when you've won (`assets/gameover_fail.png`,
+  `gameover_win.png`), rising out of black with the title's embers; the final
+  report in the column beside it. With CLASSIC on, the original's black screen
+
 ## Version 037
 
 - Every tune loops: some MODs end themselves for good (a pattern break back

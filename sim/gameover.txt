@@ -10,7 +10,8 @@ hold NONE 1200
 place 2080 670 12
 hold NONE 1200
 shot over
-hold NONE 70
+hold NONE 120
+shot over_report
 tap FIRE
 hold NONE 5
 shot backtotitle

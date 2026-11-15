@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V037";
+static const char *VERSION = "V038";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -1683,8 +1683,92 @@ static void drawHud() {
   }
 }
 
+static void drawEmbers(float dt);   // (the title's, below)
+
+// The end of a battle (CLASSIC off): a picture for a win and one for a loss, the TV's height
+// (assets/gameover_win.png, gameover_fail.png; without them, the original's black screen)
+static Pic endPic[2];   // 0 lost, 1 won
+static void makeEndPictures() {
+  static const char *names[2] = { "gameover_fail.png", "gameover_win.png" };
+  for (int k = 0; k < 2; k++) {
+    Pic src;
+    if (!assetsLoadPng(names[k], src) || src.w < 16 || src.h < 16) continue;
+    int oh = FB_H, ow = src.w * FB_H / src.h;
+    if (ow > FB_W) { ow = FB_W; oh = src.h * FB_W / src.w; }
+    uint32_t *px = (uint32_t *)bigAlloc((size_t)ow * oh * 4);
+    if (!px) continue;
+    for (int y = 0; y < oh; y++) {   // (smoothly: each pixel from the four round it)
+      float fy = (y + 0.5f) * src.h / oh - 0.5f;
+      int y0 = fy < 0 ? 0 : (int)fy, y1 = y0 + 1 < src.h ? y0 + 1 : y0;
+      float wy = fy - y0 < 0 ? 0 : fy - y0;
+      for (int x = 0; x < ow; x++) {
+        float fx = (x + 0.5f) * src.w / ow - 0.5f;
+        int x0 = fx < 0 ? 0 : (int)fx, x1 = x0 + 1 < src.w ? x0 + 1 : x0;
+        float wx = fx - x0 < 0 ? 0 : fx - x0;
+        uint32_t a = src.px[y0 * src.w + x0], b = src.px[y0 * src.w + x1], c = src.px[y1 * src.w + x0], d = src.px[y1 * src.w + x1];
+        uint32_t o = 0xff000000u;
+        for (int sh = 0; sh < 24; sh += 8) {
+          float v = ((a >> sh & 255) * (1 - wx) + (b >> sh & 255) * wx) * (1 - wy) + ((c >> sh & 255) * (1 - wx) + (d >> sh & 255) * wx) * wy;
+          o |= (uint32_t)(v + 0.5f) << sh;
+        }
+        px[(size_t)y * ow + x] = o;
+      }
+    }
+    endPic[k] = { ow, oh, px };
+  }
+}
+
+// The picture to the left, the TV's height; the final report in the column on its right
+static void drawOverPicture(float dt) {
+  const Pic &p = endPic[state == ST_WON ? 1 : 0];
+  pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
+  int ox = 0, oy = (FB_H - p.h) / 2;
+  for (int y = 0; y < p.h; y++) memcpy(g_frame + (size_t)(oy + y) * FB_W + ox, p.px + (size_t)y * p.w, (size_t)p.w * 4);
+  if (overT < 1.0f) pxBlend(0, 0, FB_W - 1, FB_H - 1, 0, 0, 0, 1 - overT);   // (it comes up out of black)
+  drawEmbers(dt);   // (the sunset's sparks, as the title's)
+  if (overT < 1.2f) return;
+  float cx = (p.w + (FB_W - p.w) / 2.0f) / UNIT_K;   // the column's middle (units)
+  uint16_t head = rgb565(255, 170, 70), ink = rgb565(225, 220, 205), dim = rgb565(170, 160, 145);
+  char buf[64];
+  float y = 150;
+  auto line = [&](const char *t, float size, uint16_t c, float gap) {
+    drawVectorText(t, cx, y, size, c, false);
+    y += gap;
+  };
+  if (state == ST_WON) {   // (the original's words)
+    line("YOU HAVE WON!!!", 2.2f, rgb565(255, 220, 90), 30);
+    line("AND SUCH A GLORIOUS", 1.3f, ink, 20);
+    line("BATTLE IT WAS TOO...", 1.3f, ink, 50);
+  } else {
+    line("YOUR TANKS", 2.0f, rgb565(240, 90, 60), 30);
+    line("ARE ALL GONE", 2.0f, rgb565(240, 90, 60), 60);
+  }
+  line("FINAL REPORT", 1.6f, head, 40);
+  snprintf(buf, sizeof(buf), "SCORE %d", score);
+  line(buf, 2.2f, rgb565(255, 255, 255), 50);
+  line("INFLICTED", 1.3f, head, 24);
+  snprintf(buf, sizeof(buf), "%d DESTROYED", destroyed); line(buf, 1.3f, ink, 22);
+  snprintf(buf, sizeof(buf), "%d HELICOPTERS", helisDown); line(buf, 1.3f, ink, 22);
+  snprintf(buf, sizeof(buf), "%d MEN", menKilled); line(buf, 1.3f, ink, 36);
+  line("RESCUED", 1.3f, head, 24);
+  snprintf(buf, sizeof(buf), "%d MEN", rescued); line(buf, 1.3f, ink, 36);
+  if (bonusOn) {
+    line("OBJECTIVES", 1.3f, head, 24);
+    snprintf(buf, sizeof(buf), "%d OF 4", (int)objDone[0] + (int)objDone[1] + (int)objDone[2] + (int)prisonersDone);
+    line(buf, 1.3f, ink, 36);
+  }
+  line("CASUALTIES", 1.3f, head, 24);
+  snprintf(buf, sizeof(buf), "TANKS %d  MEN %d", tanksLost, menLost); line(buf, 1.3f, ink, 50);
+  if (fmodf(overT, 1.0f) < 0.7f) drawVectorText("PRESS X", cx, 660, 1.8f, rgb565(255, 220, 120), true);
+  (void)dim;
+}
+
 static void drawOver(float dt) {
   overT += dt;
+  if (!classic && endPic[state == ST_WON ? 1 : 0].px) {
+    drawOverPicture(dt);
+    return;
+  }
   pxRect(0, 0, FB_W - 1, FB_H - 1, rgba(0, 0, 0));
   if (state == ST_WON) {   // (the original's words)
     drawVectorText("YOU HAVE WON!!!", 640, 160, 4.0f, rgb565(255, 220, 90), true);
@@ -2310,6 +2394,7 @@ void gameInit(uint32_t seed, const char *dir) {
   assetsLoad(dir);
   makeSynthSounds();
   makeObjectiveTiles();
+  makeEndPictures();
   loadSettings();
   loadHiScores();
   state = ST_TITLE;
