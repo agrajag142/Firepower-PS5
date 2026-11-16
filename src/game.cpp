@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V042";
+static const char *VERSION = "V043";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -356,6 +356,14 @@ static bool objDone[3];                     // radar, ammunition depot, missile 
 static bool prisonersDone = false;
 static Pic objTile[OBJ_KINDS];              // each on the sand, at 2x (made once)
 static Pic objDish;                         // the radar's dish (1x: turned as it's drawn)
+// The missile silo: with SWIV's ROTOBASE from your disk (tools/extract_swiv.py), two of its domes
+// on a pad, their lights going round, and its wreck once destroyed; without it, the missile launcher
+static Pic siloFrame[8], siloDead;
+static bool siloReady = false;
+static uint8_t siloWreck[64 * 64];          // a destroyed silo in this square (its pad and wrecked domes)
+static const char *objName(int ob) {
+  return ob == OBJ_RADAR ? "RADAR" : ob == OBJ_AMMO ? "AMMUNITION DEPOT" : siloReady ? "MISSILE SILO" : "MISSILE LAUNCHER";
+}
 static const char *objMsg = nullptr;        // RADAR DESTROYED... (a moment at the top)
 static float objMsgT = 0;
 static float incompleteT = 0;               // OBJECTIVES INCOMPLETE (home with the flag too soon)
@@ -578,7 +586,29 @@ static void makeObjectiveTiles() {
     objTile[k] = { 128, 128, px };
   }
   assetsLoadPng("objectives/radar_dish.png", objDish);
+  // the silo, if SWIV's domes are there: its pad (on the sand) in the launcher's place
+  siloReady = assetsLoadPng("swiv/silo_dead.png", siloDead);
+  for (int k = 0; k < 8 && siloReady; k++) {
+    char n[32];
+    snprintf(n, sizeof(n), "swiv/silo%d.png", k);
+    siloReady = assetsLoadPng(n, siloFrame[k]);
+  }
+  Pic pad;
+  if (siloReady && assetsLoadPng("objectives/silo_pad.png", pad) && pad.w == 64 && pad.h == 64) {
+    uint32_t *px = (uint32_t *)bigAlloc(128 * 128 * 4);
+    if (px) {
+      for (int y = 0; y < 128; y++)
+        for (int x = 0; x < 128; x++) {
+          uint32_t c = pad.px[(y / 2) * 64 + x / 2];
+          px[y * 128 + x] = (c >> 24) >= 128 ? (c | 0xff000000u) : sand.px[y * 128 + x];
+        }
+      objTile[OBJ_LAUNCHER] = { 128, 128, px };
+    }
+  } else {
+    siloReady = false;
+  }
 }
+
 static bool objectivesReady() {
   for (int k = 0; k < OBJ_KINDS; k++)
     if (!objTile[k].px) return false;
@@ -593,6 +623,7 @@ static bool allObjectivesDone() {
 // spread out over its ground
 static void setupObjectives() {
   memset(objAt, -1, sizeof(objAt));
+  memset(siloWreck, 0, sizeof(siloWreck));
   objDone[0] = objDone[1] = objDone[2] = false;
   prisonersDone = false;
   objMsgT = incompleteT = 0;
@@ -690,8 +721,10 @@ static void objectiveDestroyed(int ob, float x, float y) {
   if (ob == OBJ_PRISON) return;   // (the men count, as they're rescued)
   objDone[ob] = true;
   score += OBJ_BONUS;
-  objMsg = ob == OBJ_RADAR ? "RADAR DESTROYED - FEWER HELICOPTERS" : ob == OBJ_AMMO ? "AMMUNITION DEPOT DESTROYED"
-                                                                                   : "MISSILE LAUNCHER DESTROYED";
+  if (ob == OBJ_LAUNCHER && siloReady) siloWreck[sq((int)(x / TILE), (int)(y / TILE))] = 1;
+  static char msg[48];
+  snprintf(msg, sizeof(msg), "%s DESTROYED%s", objName(ob), ob == OBJ_RADAR ? " - FEWER HELICOPTERS" : "");
+  objMsg = msg;
   objMsgT = 3;
   addBoom(x - 14, y - 10, true);   // (it goes up with more than a building)
   addBoom(x + 14, y + 8, true);
@@ -1468,6 +1501,25 @@ static void drawGun(int i, float heading) {
   drawPic2x(g, x, y);
 }
 
+// The silos' domes (and the wrecks') over their pads; the two a little out of step
+static void drawSilos() {
+  if (!bonusOn || !siloReady) return;
+  int x0 = (int)floorf(camX / TILE), y0 = (int)floorf(camY / TILE);
+  int x1 = (int)floorf((camX + VIEW_W) / TILE), y1 = (int)floorf((camY + VIEW_H) / TILE);
+  int f = (int)(clockT * 8);
+  for (int tx = x0; tx <= x1; tx++)
+    for (int ty = y0; ty <= y1; ty++) {
+      if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN) continue;
+      int i = sq(tx, ty);
+      bool live = objAt[i] == OBJ_LAUNCHER, dead = siloWreck[i];
+      if (!live && !dead) continue;
+      for (int k = 0; k < 2; k++) {
+        const Pic &p = dead ? siloDead : siloFrame[(f + k * 3) & 7];
+        drawPic2x(p, tx * TILE + 16 + k * 32, ty * TILE + 32);
+      }
+    }
+}
+
 // The radar's dish, turning on its mast (drawn over its square)
 static void drawRadarDishes() {
   if (!bonusOn || !objDish.px) return;
@@ -1509,7 +1561,7 @@ static void drawObjectives() {
   lines[0] = pr;                              done[0] = prisonersDone;
   lines[1] = "DESTROY THE RADAR";             done[1] = objDone[OBJ_RADAR];
   lines[2] = "DESTROY THE AMMUNITION DEPOT";  done[2] = objDone[OBJ_AMMO];
-  lines[3] = "DESTROY THE MISSILE LAUNCHER";  done[3] = objDone[OBJ_LAUNCHER];
+  lines[3] = siloReady ? "DESTROY THE MISSILE SILO" : "DESTROY THE MISSILE LAUNCHER";  done[3] = objDone[OBJ_LAUNCHER];
   lines[4] = "BRING THE ENEMY FLAG HOME";     done[4] = false;
   int x0 = 12, y0 = 52, w = 290, rowH = 22;
   pxBlend(0, (int)(y0 * UNIT_K) - 6, (int)((x0 + w) * UNIT_K), (int)((y0 + 26 + 5 * rowH) * UNIT_K), 0, 0, 0, 0.45f);
@@ -1708,6 +1760,7 @@ static void drawField() {
       }
       const TileType &tt = typeAt(tx, ty);
       int ob = objAt[sq(tx, ty)];
+      if (ob < 0 && siloWreck[sq(tx, ty)]) ob = OBJ_LAUNCHER;   // (a destroyed silo: its pad stays)
       const Pic &t = ob >= 0 ? objTile[ob] : tt.enemy ? A.tilesEnemy[tt.pic] : A.tiles[tt.pic];
       int cx0 = sx < 0 ? -sx : 0, cx1 = sx + 128 > FB_W ? FB_W - sx : 128;
       if (cx1 <= cx0) continue;
@@ -2698,6 +2751,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
 
   drawField();
   drawRadarDishes();
+  drawSilos();
   drawJetShadow();
   for (int k = 0; k < nTurrets; k++)
     if (isTurret(turrets[k].i)) drawGun(turrets[k].i, turrets[k].heading);

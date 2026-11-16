@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 043: the missile silo
+
+- The bonus objective DESTROY THE MISSILE LAUNCHER is now DESTROY THE MISSILE
+  SILO: two of SWIV's ROTOBASE domes on a hazard-striped pad, their red
+  lights going round (a little out of step), and their wreck (its last
+  frame) once it's destroyed. From your SWIV disk: run
+  `tools/extract_swiv.py` again (it now needs ROTOBASE.LIN and TOWN.PAM too).
+  Without them, the missile launcher as before
+
 ## Version 042: the jets bomb your base
 
 - Over your base each jet drops a stick of bombs (three or four), falling from
@@ -32,7 +41,7 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
   on the ground at 2x and three times as far off as a helicopter's
 - To have them: run SWIV's own `swiv_extract.py` on your SWIV disk, then
   `python3 firepower/tools/extract_swiv.py /path/to/its/out/files`
-  (it writes `assets/swiv/`). Without them, no jets
+  (it writes `assets/swiv/`). Without them, no jets (and the missile launcher, not the silo)
 
 ## Version 040
 
@@ -422,6 +431,7 @@ firepower/build.sh sim firepower/sim/tanks.txt   # choosing the tank: the Shadow
 firepower/build.sh sim firepower/sim/lowarmour.txt   # low armour: the red haze, the edges, the heartbeat
 firepower/build.sh sim firepower/sim/objectives.txt   # bonus objectives: the radar shelled, a prison camp opened
 firepower/build.sh sim firepower/sim/jets.txt    # a SWIV jet bombs your base (with assets/swiv)
+firepower/build.sh sim firepower/sim/silo.txt    # the missile silo (with assets/swiv), shelled
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

@@ -6,6 +6,7 @@
   ammo.png         the ammunition depot
   launcher.png     the missile launcher
   prison.png       the prison camp (your captured soldiers inside)
+  silo_pad.png     the missile silo's pad: its two domes (SWIV's, from your disk) go on top at run time
 
   python3 tools/draw_objectives.py        (writes them into assets/objectives/, and a preview)
 """
@@ -195,10 +196,27 @@ def prison():
     p.shadow()
     return p
 
+def silo_pad():
+    """the concrete the two silo domes stand on: a hazard-striped edge, cables between them"""
+    p = Pic()
+    p.bevel(3, 14, 60, 49, 'dgry', 'gry', 'blk', 1)
+    for x in range(5, 59):   # yellow and black edges, top and bottom
+        c = 'yel' if (x // 3) % 2 == 0 else 'blk'
+        p.put(x, 16, c); p.put(x, 47, c)
+    for y in range(17, 47):
+        c = 'yel' if (y // 3) % 2 == 0 else 'blk'
+        p.put(5, y, c); p.put(58, y, c)
+    for cx in (16, 48):      # where each dome sits: a dark ring
+        p.disc(cx - 0.5, 31.5, 15, 'blk'); p.disc(cx - 0.5, 31.5, 13, 'dgry')
+    p.line(30, 30, 34, 30, 'blk'); p.line(30, 33, 34, 33, 'blk')
+    p.shadow()
+    return p
+
 if __name__ == '__main__':
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'objectives')
     os.makedirs(out, exist_ok=True)
-    pics = {'radar': radar(), 'radar_dish': radar_dish(), 'ammo': ammo(), 'launcher': launcher(), 'prison': prison()}
+    pics = {'radar': radar(), 'radar_dish': radar_dish(), 'ammo': ammo(), 'launcher': launcher(), 'prison': prison(),
+            'silo_pad': silo_pad()}
     for n, p in pics.items(): p.image().save(os.path.join(out, n + '.png'))
     if len(sys.argv) > 1:   # a preview: each on the sand, at 4x
         sand = Image.open(sys.argv[2]).convert('RGBA') if len(sys.argv) > 2 else Image.new('RGBA', (64, 64), P['sand'] + (255,))

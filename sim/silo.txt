@@ -1,0 +1,14 @@
+# The missile silo (BONUS OBJECTIVES, with SWIV's ROTOBASE in assets/swiv): two domes, their lights
+# going round; shelled, the wreck
+battlefield 0
+tap FIRE
+hold NONE 2
+god on
+place 608 2475 0
+hold NONE 2
+shot silo_a
+hold NONE 5
+shot silo_b
+hold FIRE 300
+hold NONE 60
+shot silo_dead

@@ -4,13 +4,16 @@
     python3 firepower/tools/extract_swiv.py /path/to/swiv/files
 
 /path/to/swiv/files is the folder of SWIV's game files that swiv_extract.py makes (out/files):
-it needs JETS.LIN and DESERT.PAM. Writes assets/swiv/jet0.png, jet1.png, jet2.png - SWIV's three
+it needs JETS.LIN, DESERT.PAM, ROTOBASE.LIN and TOWN.PAM. Writes assets/swiv/jet0.png, jet1.png, jet2.png - SWIV's three
 aircraft, each put back together from its 32-pixel strips (around its own middle) in the desert
 level's colours. Without them the game simply has no jets. Python 3 only, nothing to install.
 
   jet0: the camouflaged jet drawn on the diagonal (flying down and to the left)
   jet1: the grey bomber, also on the diagonal (the same way)
   jet2: the camouflaged jet facing straight up (the game turns it to any heading)
+
+and from ROTOBASE.LIN (with TOWN.PAM's colours) the missile silo of the bonus objectives:
+  silo0.png .. silo7.png: its dome, the lights going round;  silo_dead.png: destroyed
 """
 import os, struct, sys, zlib
 
@@ -93,6 +96,29 @@ def main():
                     img[o:o + 4] = bytes(pal[c]) + b'\xff'
         write_png(os.path.join(out, 'jet%d.png' % k), W, H, img)
         print('jet%d: %d x %d' % (k, W, H))
+    # the missile silo (ROTOBASE.LIN, town colours): its dome's 8 frames (the lights going round),
+    # then the wreck; the arm (frames 0-3) isn't used
+    try:
+        roto = open(os.path.join(src, 'ROTOBASE.LIN'), 'rb').read()
+        tpal = pam_palette(open(os.path.join(src, 'TOWN.PAM'), 'rb').read())
+    except OSError as e:
+        sys.exit('need ROTOBASE.LIN and TOWN.PAM there too (%s)' % e)
+    rf = lin_frames(roto)
+    if len(rf) < 13:
+        sys.exit('ROTOBASE.LIN: expected 13 frames, found %d' % len(rf))
+    for k in range(9):
+        f = rf[4 + k]
+        W = H = 32
+        img = bytearray(W * H * 4)
+        ox, oy = 16 - 1 - f['hot'][0], 16 - 1 - f['hot'][1]   # (its hotspot at the middle)
+        for y in range(f['h']):
+            for x in range(f['w']):
+                c = f['idx'][y][x]
+                if c == f['tc'] or not (0 <= ox + x < W and 0 <= oy + y < H): continue
+                o = ((oy + y) * W + ox + x) * 4
+                img[o:o + 4] = bytes(tpal[c]) + b'\xff'
+        write_png(os.path.join(out, 'silo%d.png' % k if k < 8 else 'silo_dead.png'), W, H, img)
+    print('silo: 8 frames and the wreck')
     print('done: %s' % os.path.normpath(out))
 
 if __name__ == '__main__':
