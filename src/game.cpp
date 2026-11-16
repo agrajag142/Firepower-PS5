@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V040";
+static const char *VERSION = "V041";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -261,7 +261,7 @@ struct Voice {
 static Voice voices[8];
 static std::atomic<uint32_t> soundAsk{0};
 // Two more sounds of our own (CLASSIC off), made at the start: a heartbeat and a warning
-enum { GSND_HEART = SND_COUNT, GSND_ALERT, GSND_TOTAL };
+enum { GSND_HEART = SND_COUNT, GSND_ALERT, GSND_JET, GSND_TOTAL };
 static Sound sounds[GSND_TOTAL];   // the disk's five, then ours
 static std::atomic<int> soundVolAsk[GSND_TOTAL];
 
@@ -697,6 +697,7 @@ static void objectiveDestroyed(int ob, float x, float y) {
   addBoom(x + 14, y + 8, true);
 }
 
+static void resetJets();   // (the jets, below)
 static void startBattle(int m) {
   mapNo = m;
   memcpy(field, A.maps[m], sizeof(field));
@@ -749,6 +750,7 @@ static void startBattle(int m) {
   for (Missile &mm : missiles) mm.live = false;
   for (Heli &h : helis) h.live = false;
   heliTimer = HELI_FIRST;
+  resetJets();
   for (Man &mn : men) mn.live = false;
   unloadT = 0;
   extraT = 0;
@@ -925,7 +927,7 @@ static inline bool isTurret(int i) { return (A.types[field[i]].flagsB & 0x08) !=
 // ---- LOW ARMOUR (CLASSIC off): from 40% down a red glow beats round your tank, quicker the
 // lower it gets; a warning sounds as it falls to 40, 30, 20 and 10%; from 20% down the heartbeat
 // is heard and the battle view's edges beat red too. No words.
-static int8_t synthHeart[16000 * 3 / 10], synthAlert[16000 * 42 / 100];
+static int8_t synthHeart[16000 * 3 / 10], synthAlert[16000 * 42 / 100], synthJet[16000 * 3];
 static void makeSynthSounds() {
   for (int i = 0; i < SND_COUNT; i++) sounds[i] = A.snd[i];
   const float R = 16000;
@@ -960,6 +962,24 @@ static void makeSynthSounds() {
   tone(0.00f, 0.16f, 880, 660);
   tone(0.19f, 0.22f, 660, 440);
   sounds[GSND_ALERT] = { synthAlert, na, (int)R };
+  // a jet going over: a deep rushing roar, swelling and dying away (noise, low-passed, its edge
+  // brightening as it comes nearest)
+  int nj = (int)sizeof(synthJet);
+  uint32_t seed = 12345;
+  float lp1 = 0, lp2 = 0;
+  for (int i = 0; i < nj; i++) {
+    seed = seed * 1664525u + 1013904223u;
+    float w = ((seed >> 9) & 0xffff) / 32768.0f - 1.0f;
+    float t = i / (float)nj, env = t < 0.45f ? t / 0.45f : 1 - (t - 0.45f) / 0.55f;
+    env = env * env;
+    float cut = 0.04f + 0.10f * env;          // (brighter as it passes)
+    lp1 += (w - lp1) * cut;
+    lp2 += (lp1 - lp2) * cut;
+    float v = (lp2 * 3.2f + lp1 * 0.6f) * env;
+    int o = (int)(v * 110);
+    synthJet[i] = (int8_t)(o > 120 ? 120 : o < -120 ? -120 : o);
+  }
+  sounds[GSND_JET] = { synthJet, nj, (int)R };
 }
 
 static float camX = 0, camY = 0;   // the view's top left, Amiga pixels
@@ -1501,6 +1521,114 @@ static void drawObjectives() {
     if (done[k]) fillRect(x0 + 10, y - 4, x0 + 18, y + 4, c);
     drawVectorText(lines[k], x0 + 30 + vectorTextWidth(lines[k], 1.15f) / 2, y, 1.15f, c, false);
   }
+}
+
+// ---- JETS (CLASSIC off, with SWIV's aircraft from your own disk: tools/extract_swiv.py). For now
+// atmosphere: once a minute one comes in high from off the battlefield and passes over your base,
+// a little to one side or the other each time (where its bombs will fall, later), and away.
+// Higher than the helicopters: drawn at 3x (nearer you), its shadow on the ground at 2x and three
+// times as far off as a helicopter's.
+static const float JET_FIRST = 40.0f;     // seconds into a battle before the first
+static const float JET_EVERY = 60.0f;     // then one this often
+static const float JET_SPEED = 240.0f;    // Amiga pixels a second (along the ground)
+static const float JET_SPREAD = 150.0f;   // its path passes this far either side of your base, at most
+static const float JET_RUN = 1300.0f;     // it starts and ends this far from your base
+static const float JET_HIGH_X = 55.0f, JET_HIGH_Y = 75.0f;   // how far its shadow lies from it (right, down)
+static const float JET_SCALE = 3.0f, JET_SHADOW_SCALE = 2.0f;
+static Pic jetPic[3];                     // jet0, jet1: on the diagonal (flying down-left); jet2: nose up
+static bool jetsReady = false;
+struct Jet { bool live; int kind; float x, y, dx, dy, ang, left; bool heard; };
+static Jet jet;                           // (one at a time)
+static float jetTimer = JET_FIRST;
+
+static void loadJets() {
+  jetsReady = true;
+  for (int k = 0; k < 3; k++) {
+    char n[32];
+    snprintf(n, sizeof(n), "swiv/jet%d.png", k);
+    if (!assetsLoadPng(n, jetPic[k])) jetsReady = false;
+  }
+}
+
+static void resetJets() {
+  jet.live = false;
+  jetTimer = JET_FIRST;
+}
+
+static void startJet() {
+  jet.kind = (int)(rnd() * 3) % 3;
+  float ang;   // the way it flies (0 up, clockwise)
+  if (jet.kind < 2) ang = TWO_PI * 5 / 8;   // the diagonal ones: down and to the left, as drawn
+  else ang = rnd() * TWO_PI;                // the other turns to any heading
+  jet.ang = jet.kind < 2 ? 0 : ang;         // (how far its picture is turned)
+  jet.dx = sinf(ang);
+  jet.dy = -cosf(ang);
+  float side = (rnd() * 2 - 1) * JET_SPREAD;   // across its path from your base's middle
+  float bx = (startSquare / MAPN) * TILE + TILE / 2.0f, by = (startSquare % MAPN) * TILE + TILE / 2.0f;
+  // (x, y) is where its shadow is: that's the ground it's over
+  jet.x = bx - jet.dx * JET_RUN + (-jet.dy) * side;
+  jet.y = by - jet.dy * JET_RUN + jet.dx * side;
+  jet.left = 2 * JET_RUN / JET_SPEED;
+  jet.heard = false;
+  jet.live = true;
+}
+
+static void updateJets(float dt) {
+  if (!jetsReady || classic) { jet.live = false; return; }
+  if (!jet.live) {
+    jetTimer -= dt;
+    if (jetTimer <= 0) {
+      jetTimer = JET_EVERY;
+      startJet();
+    }
+    return;
+  }
+  jet.x += jet.dx * JET_SPEED * dt;
+  jet.y += jet.dy * JET_SPEED * dt;
+  jet.left -= dt;
+  if (jet.left <= 0) jet.live = false;
+  // its roar as it comes over the view
+  float vx = camX + VIEW_W / 2, vy = camY + VIEW_H / 2;
+  if (!jet.heard && fabsf(jet.x - vx) < VIEW_W * 0.9f && fabsf(jet.y - vy) < VIEW_H * 0.9f) {
+    jet.heard = true;
+    playSound(GSND_JET, 0.9f);
+  }
+}
+
+// A picture turned by ang about its middle, at k times its size, its middle at (cx, cy) on the screen.
+// shadow: drawn as a see-through dark patch instead of its colours
+static void drawTurned(const Pic &p, float cx, float cy, float ang, float k, bool shadow) {
+  float ca = cosf(ang), sa = sinf(ang), R = p.w * k * 0.75f;
+  float hx = p.w / 2.0f, hy = p.h / 2.0f;
+  int y0 = (int)(cy - R), y1 = (int)(cy + R), x0 = (int)(cx - R), x1 = (int)(cx + R);
+  if (y0 < 0) y0 = 0;
+  if (y1 > FB_H - 1) y1 = FB_H - 1;
+  if (x0 < 0) x0 = 0;
+  if (x1 > PLAY_W - 1) x1 = PLAY_W - 1;
+  for (int y = y0; y <= y1; y++) {
+    uint32_t *row = g_frame + (size_t)y * FB_W;
+    for (int x = x0; x <= x1; x++) {
+      float rx = x + 0.5f - cx, ry = y + 0.5f - cy;
+      int ix = (int)floorf((rx * ca + ry * sa) / k + hx), iy = (int)floorf((-rx * sa + ry * ca) / k + hy);
+      if (ix < 0 || iy < 0 || ix >= p.w || iy >= p.h) continue;
+      uint32_t c = p.px[iy * p.w + ix];
+      if ((c >> 24) < 128) continue;
+      if (shadow) {
+        uint32_t q = row[x];
+        row[x] = 0xff000000u | (((q >> 16) & 255) * 5 / 8) << 16 | (((q >> 8) & 255) * 5 / 8) << 8 | ((q & 255) * 5 / 8);
+      } else {
+        row[x] = c | 0xff000000u;
+      }
+    }
+  }
+}
+static void drawJetShadow() {
+  if (!jet.live) return;
+  drawTurned(jetPic[jet.kind], (jet.x - camX) * S, (jet.y - camY) * S, jet.ang, JET_SHADOW_SCALE, true);
+}
+static void drawJet() {
+  if (!jet.live) return;
+  drawTurned(jetPic[jet.kind], (jet.x - JET_HIGH_X - camX) * S, (jet.y - JET_HIGH_Y - camY) * S, jet.ang, JET_SCALE, false);
 }
 
 static void drawField() {
@@ -2395,6 +2523,7 @@ void gameInit(uint32_t seed, const char *dir) {
   makeSynthSounds();
   makeObjectiveTiles();
   makeEndPictures();
+  loadJets();
   loadSettings();
   loadHiScores();
   state = ST_TITLE;
@@ -2479,6 +2608,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     updateGates(dt);
     updateTurrets(dt);
     updateHelis(dt);
+    updateJets(dt);
     moveMissiles(dt);
     updateRespawn(dt);
     updateMen(dt);
@@ -2497,6 +2627,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
 
   drawField();
   drawRadarDishes();
+  drawJetShadow();
   for (int k = 0; k < nTurrets; k++)
     if (isTurret(turrets[k].i)) drawGun(turrets[k].i, turrets[k].heading);
   for (int k = 0; k < nOurs; k++)
@@ -2530,6 +2661,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     drawPic2x(A.heli.pic[16 + ((int)(clockT * 20) & 1)], h.x, h.y);
   }
   drawBooms(menuOpen ? 0 : dt);
+  drawJet();   // (highest of all)
   drawArmourEdges();
   drawHud();
   if (menuOpen) drawMenu();

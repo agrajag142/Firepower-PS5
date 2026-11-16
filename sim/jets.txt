@@ -1,0 +1,15 @@
+# The SWIV jets (CLASSIC off, with assets/swiv from tools/extract_swiv.py): after 40 seconds one
+# passes high over your base, its shadow on the ground, and away
+battlefield 0
+bonus off
+tap FIRE
+hold NONE 2
+god on
+hold NONE 2400
+hold NONE 270
+shot jet_a
+hold NONE 30
+shot jet_b
+hold NONE 30
+shot jet_c
+wav 4 jet

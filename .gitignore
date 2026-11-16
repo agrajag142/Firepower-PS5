@@ -7,3 +7,4 @@ assets/fp/
 *.adf
 # the music: yours, copied in (assets/title.mod, assets/game.mod)
 *.mod
+assets/swiv/
