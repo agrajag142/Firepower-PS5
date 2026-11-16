@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V041";
+static const char *VERSION = "V042";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -1535,6 +1535,15 @@ static const float JET_SPREAD = 150.0f;   // its path passes this far either sid
 static const float JET_RUN = 1300.0f;     // it starts and ends this far from your base
 static const float JET_HIGH_X = 55.0f, JET_HIGH_Y = 75.0f;   // how far its shadow lies from it (right, down)
 static const float JET_SCALE = 3.0f, JET_SHADOW_SCALE = 2.0f;
+static const float BOMB_FALL = 0.7f;      // seconds from the plane to the ground
+static const float BOMB_EVERY = 0.22f;    // between the bombs of a stick
+static const float BOMB_ZONE = 100.0f;    // it bombs while what it's over is this near your base's middle (along its path)
+static const int BOMB_HITS = 2;           // a bomb wears a building or wall down as this many of your shells (a building: two bombs)
+static const int BOMB_TANK_DAMAGE = 25;   // your tank, caught by one (a helicopter's missile: 10)
+static const float BOMB_RADIUS = 30.0f;   // how near the burst catches your tank (Amiga pixels)
+struct Bomb { bool live; float x, y, gx, gy, t; };   // from (x, y) (under the plane) to (gx, gy) on the ground
+static Bomb bombs[8];
+static float bombGap = 0;
 static Pic jetPic[3];                     // jet0, jet1: on the diagonal (flying down-left); jet2: nose up
 static bool jetsReady = false;
 struct Jet { bool live; int kind; float x, y, dx, dy, ang, left; bool heard; };
@@ -1552,6 +1561,7 @@ static void loadJets() {
 
 static void resetJets() {
   jet.live = false;
+  for (Bomb &b : bombs) b.live = false;
   jetTimer = JET_FIRST;
 }
 
@@ -1573,7 +1583,34 @@ static void startJet() {
   jet.live = true;
 }
 
+static void bombLands(const Bomb &b) {
+  addBoom(b.gx, b.gy, true);
+  playSound(SND_TANKBLAST, 0.9f);
+  int tx = (int)floorf(b.gx / TILE), ty = (int)floorf(b.gy / TILE);
+  if (tx >= 0 && ty >= 0 && tx < MAPN && ty < MAPN && !(A.types[field[sq(tx, ty)]].flagsA & 0x08)) {   // (your garage: no harm)
+    int keepScore = score, keepDestroyed = destroyed;   // (the enemy's doing: no points for you)
+    for (int k = 0; k < BOMB_HITS && solidSquare(tx, ty); k++) hitSquare(tx, ty, b.gx, b.gy);
+    score = keepScore;
+    destroyed = keepDestroyed;
+  }
+  float dx = tank.x - b.gx, dy = tank.y - b.gy;
+  bool sheltered = A.types[field[sq((int)(tank.x / TILE), (int)(tank.y / TILE))]].flagsA & 0x08;   // (under your garage's roof)
+  if (tank.alive && !sheltered && dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) tankHit(BOMB_TANK_DAMAGE, b.gx, b.gy);
+}
+
+static void updateBombs(float dt) {
+  for (Bomb &b : bombs) {
+    if (!b.live) continue;
+    b.t += dt;
+    if (b.t >= BOMB_FALL) {
+      b.live = false;
+      bombLands(b);
+    }
+  }
+}
+
 static void updateJets(float dt) {
+  updateBombs(dt);
   if (!jetsReady || classic) { jet.live = false; return; }
   if (!jet.live) {
     jetTimer -= dt;
@@ -1586,6 +1623,19 @@ static void updateJets(float dt) {
   jet.x += jet.dx * JET_SPEED * dt;
   jet.y += jet.dy * JET_SPEED * dt;
   jet.left -= dt;
+  // over your base: a stick of bombs. Each falls on ahead as it drops (it keeps the plane's speed)
+  float bx = (startSquare / MAPN) * TILE + TILE / 2.0f, by = (startSquare % MAPN) * TILE + TILE / 2.0f;
+  float fall = JET_SPEED * BOMB_FALL;   // how far on it lands
+  float along = (jet.x - bx) * jet.dx + (jet.y - by) * jet.dy + fall;
+  bombGap -= dt;
+  if (fabsf(along) < BOMB_ZONE && bombGap <= 0) {
+    bombGap = BOMB_EVERY;
+    for (Bomb &b : bombs)
+      if (!b.live) {
+        b = { true, jet.x, jet.y, jet.x + jet.dx * fall, jet.y + jet.dy * fall, 0 };
+        break;
+      }
+  }
   if (jet.left <= 0) jet.live = false;
   // its roar as it comes over the view
   float vx = camX + VIEW_W / 2, vy = camY + VIEW_H / 2;
@@ -1626,7 +1676,22 @@ static void drawJetShadow() {
   if (!jet.live) return;
   drawTurned(jetPic[jet.kind], (jet.x - camX) * S, (jet.y - camY) * S, jet.ang, JET_SHADOW_SCALE, true);
 }
+static void drawBombs() {
+  for (const Bomb &b : bombs) {
+    if (!b.live) continue;
+    float k = b.t / BOMB_FALL;   // 0 at the plane, 1 on the ground
+    float gx = b.x + (b.gx - b.x) * k, gy = b.y + (b.gy - b.y) * k;   // the ground under it
+    float hx = JET_HIGH_X * (1 - k), hy = JET_HIGH_Y * (1 - k);       // its height, falling away
+    float sx = (gx - camX) * S, sy = (gy - camY) * S;
+    float r = (JET_SCALE - (JET_SCALE - JET_SHADOW_SCALE) * k) * 2.2f;
+    pxCircle(sx, sy, r * 0.7f, rgba(0, 0, 0));   // (its shadow, closing on it)
+    float px = (gx - hx - camX) * S, py = (gy - hy - camY) * S;
+    pxCircle(px, py, r, rgba(40, 40, 36));
+    pxCircle(px - r * 0.3f, py - r * 0.3f, r * 0.35f, rgba(150, 150, 140));
+  }
+}
 static void drawJet() {
+  drawBombs();
   if (!jet.live) return;
   drawTurned(jetPic[jet.kind], (jet.x - JET_HIGH_X - camX) * S, (jet.y - JET_HIGH_Y - camY) * S, jet.ang, JET_SCALE, false);
 }
@@ -1696,6 +1761,12 @@ static void drawMap(int x0, int y0, int cell, float alpha) {
   }
   for (Heli &h : helis)
     if (h.live) pxCircle(x0 + h.x / TILE * cell, y0 + h.y / TILE * cell, cell < 6 ? 3.5f : 6, rgba(255, 60, 40));
+  if (jet.live && jet.x > 0 && jet.y > 0 && jet.x < MAPN * TILE && jet.y < MAPN * TILE) {   // a jet: white, with its trail
+    float jx = x0 + jet.x / TILE * cell, jy = y0 + jet.y / TILE * cell;
+    for (int k = 1; k <= 4; k++)
+      pxCircle(jx - jet.dx * k * cell * 0.9f, jy - jet.dy * k * cell * 0.9f, (cell < 6 ? 2.5f : 4) * (1 - k * 0.18f), rgba(200, 200, 210));
+    pxCircle(jx, jy, cell < 6 ? 4.0f : 7, rgba(255, 255, 255));
+  }
   // your base, and the flag once it's out
   float bx = x0 + ((startSquare / MAPN) + 0.5f) * cell, by = y0 + ((startSquare % MAPN) + 0.5f) * cell;
   pxRect((int)bx - (cell < 6 ? 4 : 7), (int)by - (cell < 6 ? 4 : 7), (int)bx + (cell < 6 ? 4 : 7), (int)by + (cell < 6 ? 4 : 7), rgba(80, 160, 255));
@@ -2686,6 +2757,10 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     for (int i = 0; i < MAPN * MAPN && L < sizeof(debugText) - 24; i++)
       if (objAt[i] >= 0) L += snprintf(debugText + L, sizeof(debugText) - L, " obj%d@%d,%d", objAt[i], i / MAPN, i % MAPN);
     snprintf(debugText + L, sizeof(debugText) - L, " done %d%d%d%d", objDone[0], objDone[1], objDone[2], prisonersDone);
+    L = strlen(debugText);
+    int nb = 0;
+    for (const Bomb &b : bombs) nb += b.live;
+    snprintf(debugText + L, sizeof(debugText) - L, " jet %d %.0f,%.0f in %.0f bombs %d", (int)jet.live, jet.x, jet.y, jetTimer, nb);
   }
 }
 

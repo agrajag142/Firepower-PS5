@@ -1,15 +1,24 @@
 # The SWIV jets (CLASSIC off, with assets/swiv from tools/extract_swiv.py): after 40 seconds one
-# passes high over your base, its shadow on the ground, and away
+# passes high over your base, its shadow on the ground, dropping a stick of bombs there; the tank
+# waits out in the base, in its way (not under the garage's roof)
 battlefield 0
 bonus off
 tap FIRE
 hold NONE 2
 god on
-hold NONE 2400
+hold NONE 2380
+god off
+armour 100
+place 1440 770 0
 hold NONE 270
 shot jet_a
-hold NONE 30
-shot jet_b
-hold NONE 30
-shot jet_c
-wav 4 jet
+tap MAP
+shot jet_radar
+tap MAP
+hold NONE 25
+shot jet_bombs
+hold NONE 25
+shot jet_bombs_2
+hold NONE 60
+shot jet_after
+wav 3 jet

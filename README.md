@@ -10,6 +10,18 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 042: the jets bomb your base
+
+- Over your base each jet drops a stick of bombs (three or four), falling from
+  its height to the ground on ahead of it. A bomb wears a building or wall
+  down as two of your shells (so two bombs bring a building down); it
+  takes 25 of your tank's armour if it bursts beside it (a helicopter's
+  missile: 10). Your garage takes no harm, and under its roof your tank's
+  safe. Its path is a little to one side or the other each time, so what's
+  hit changes
+- The jets on the radar: a white dot with its trail
+- Only with CLASSIC off (the jets don't come at all with it on)
+
 ## Version 041: the SWIV jets (CLASSIC off)
 
 - From your own SWIV disk (never in git): SWIV's three aircraft fly over the
@@ -409,7 +421,7 @@ firepower/build.sh sim firepower/sim/hiscore.txt   # a won battle into the high 
 firepower/build.sh sim firepower/sim/tanks.txt   # choosing the tank: the Shadow
 firepower/build.sh sim firepower/sim/lowarmour.txt   # low armour: the red haze, the edges, the heartbeat
 firepower/build.sh sim firepower/sim/objectives.txt   # bonus objectives: the radar shelled, a prison camp opened
-firepower/build.sh sim firepower/sim/jets.txt    # a SWIV jet over your base (with assets/swiv)
+firepower/build.sh sim firepower/sim/jets.txt    # a SWIV jet bombs your base (with assets/swiv)
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```
