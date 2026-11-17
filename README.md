@@ -10,6 +10,12 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 045
+
+- HELICOPTERS in the settings menu (on to start, kept for next time; only
+  there with CLASSIC off): off, no helicopters come (any in the air go). With
+  CLASSIC on they always come
+
 ## Version 044
 
 - BASE DAMAGE (CLASSIC off, for now), top right of the battle view: how much of
@@ -441,6 +447,7 @@ firepower/build.sh sim firepower/sim/lowarmour.txt   # low armour: the red haze,
 firepower/build.sh sim firepower/sim/objectives.txt   # bonus objectives: the radar shelled, a prison camp opened
 firepower/build.sh sim firepower/sim/jets.txt    # a SWIV jet bombs your base (with assets/swiv)
 firepower/build.sh sim firepower/sim/silo.txt    # the missile silo (with assets/swiv), shelled
+firepower/build.sh sim firepower/sim/nohelis.txt   # HELICOPTERS off: none come
 firepower/build.sh sim firepower/sim/menu.txt    # the settings menu; X starting a battle doesn't fire
 firepower/build.sh sim firepower/sim/ruin.txt    # a ruin, and a barracks' ruin: the tank drives over them
 ```

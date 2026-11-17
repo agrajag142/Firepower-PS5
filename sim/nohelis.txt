@@ -1,0 +1,17 @@
+# HELICOPTERS off in the settings (CLASSIC off): none come
+tap MAP
+tap DOWN
+tap DOWN
+tap DOWN
+tap DOWN
+tap DOWN
+tap DOWN
+tap FIRE
+shot nohelis_menu
+tap MAP
+battlefield 0
+tap FIRE
+hold NONE 2
+place 1500 1150 0
+hold NONE 3600
+shot nohelis

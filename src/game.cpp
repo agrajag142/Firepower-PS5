@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V044";
+static const char *VERSION = "V045";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -200,6 +200,7 @@ void micromod2_get_audio(short *output_buffer, long count);
 static bool tuneReady[TUNES] = { false, false };
 static float tuneGain[TUNES] = { 0, 0 };            // (the sound thread's)
 static std::atomic<bool> musicOn{true};
+static bool helisOn = true;     // HELICOPTERS in the settings (CLASSIC off): off, none come (with CLASSIC on, always)
 static bool showFlag = false;  // SHOW FLAG in the settings: where the enemy flag is, on the radar
 static bool classic = false;
 static bool randomField = true;   // RANDOM BATTLEFIELD in the settings (CLASSIC off): off, X on the title shows the battlefields to choose from   // CLASSIC in the settings: the original game as it was (on) or with the new features (off)
@@ -1263,8 +1264,12 @@ static void heliMissile(const Heli &h) {
 static void updateHelis(float dt) {
   int live = 0;
   for (Heli &h : helis) live += h.live;
+  if (!classic && !helisOn) {   // (HELICOPTERS off: none, and any up go)
+    for (Heli &h : helis) h.live = false;
+    heliTimer = HELI_FIRST;
+  }
   heliTimer -= dt;
-  if (heliTimer <= 0 && tank.alive) {
+  if (heliTimer <= 0 && tank.alive && (classic || helisOn)) {
     if (live < HELI_MAX) spawnHeli();
     heliTimer = (HELI_EVERY + rnd() * HELI_EVERY_MORE) * (bonusOn && objDone[OBJ_RADAR] ? 2 : 1);   // (the radar down: half as often)
   }
@@ -2381,7 +2386,7 @@ static void drawRoofs() {
 // ============================================================ the settings menu
 // Options opens it, on the title screen or in the battle (which waits): the music
 // on or off, its volume, the sounds' volume, and the ways out. Kept on the PS5.
-enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RANDOM, MI_BONUS, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
+enum { MI_MUSIC, MI_MUSIC_VOL, MI_SFX_VOL, MI_CLASSIC, MI_RANDOM, MI_BONUS, MI_HELIS, MI_SHOWFLAG, MI_RESUME, MI_TITLE, MI_QUIT, MI_COUNT };
 static int menuSel = 0;
 static int quitArmed = -1;          // MI_TITLE or MI_QUIT: pressed once, X again to go
 static bool quitAsked = false;      // the platform closes the app
@@ -2391,8 +2396,8 @@ static void loadSettings() {
   if (!path) return;
   FILE *f = fopen(path, "rb");
   if (!f) return;
-  uint8_t b[7] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0, 1, 1 };
-  if (fread(b, 1, 7, f) >= 3) {
+  uint8_t b[8] = { 1, MUSIC_VOLUME_DEFAULT, SFX_VOLUME_DEFAULT, 0, 0, 1, 1, 1 };
+  if (fread(b, 1, 8, f) >= 3) {
     musicOn.store(b[0] != 0);
     musicVol.store(b[1] > 100 ? 100 : b[1]);
     sfxVol.store(b[2] > 100 ? 100 : b[2]);
@@ -2400,6 +2405,7 @@ static void loadSettings() {
     showFlag = b[4] != 0;
     randomField = b[5] != 0;
     bonusObjectives = b[6] != 0;
+    helisOn = b[7] != 0;
   }
   fclose(f);
 }
@@ -2411,15 +2417,15 @@ static void saveSettings() {
 #endif
   FILE *f = fopen(path, "wb");
   if (!f) return;
-  uint8_t b[7] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag,
-                   (uint8_t)randomField, (uint8_t)bonusObjectives };
-  fwrite(b, 1, 7, f);
+  uint8_t b[8] = { (uint8_t)musicOn.load(), (uint8_t)musicVol.load(), (uint8_t)sfxVol.load(), (uint8_t)classic, (uint8_t)showFlag,
+                   (uint8_t)randomField, (uint8_t)bonusObjectives, (uint8_t)helisOn };
+  fwrite(b, 1, 8, f);
   fclose(f);
 }
 
 static bool menuItemShown(int i) {
   if (i == MI_TITLE) return state == ST_PLAY;   // (no battle to leave on the title)
-  if (i == MI_RANDOM || i == MI_BONUS) return !classic;   // (classic: always at random, no objectives)
+  if (i == MI_RANDOM || i == MI_BONUS || i == MI_HELIS) return !classic;   // (classic: always at random, no objectives)
   return true;
 }
 
@@ -2464,6 +2470,8 @@ static void updateMenu(float dt, uint32_t held, uint32_t pressed, float sx, floa
     classic = !classic;
   } else if (menuSel == MI_RANDOM && (go || side)) {
     randomField = !randomField;
+  } else if (menuSel == MI_HELIS && (go || side)) {
+    helisOn = !helisOn;
   } else if (menuSel == MI_BONUS && (go || side)) {
     bonusObjectives = !bonusObjectives;
   } else if (menuSel == MI_SHOWFLAG && (go || side)) {
@@ -2509,7 +2517,7 @@ static void drawMenu() {
     bool sel = i == menuSel;
     if (sel) fillRect(x0 + 16, y - ROW / 2 + 2, x1 - 16, y + ROW / 2 - 2, rgb565(90, 66, 30));
     uint16_t c = sel ? rgb565(255, 225, 120) : rgb565(225, 220, 205);
-    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_RANDOM ? "RANDOM BATTLEFIELD" : i == MI_BONUS ? "BONUS OBJECTIVES" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
+    const char *label = i == MI_MUSIC ? "MUSIC" : i == MI_CLASSIC ? "CLASSIC" : i == MI_SHOWFLAG ? "SHOW FLAG" : i == MI_RANDOM ? "RANDOM BATTLEFIELD" : i == MI_BONUS ? "BONUS OBJECTIVES" : i == MI_HELIS ? "HELICOPTERS" : i == MI_MUSIC_VOL ? "MUSIC VOLUME" : i == MI_SFX_VOL ? "SOUND FX VOLUME" :
                         i == MI_RESUME ? "RESUME" :
                         i == MI_TITLE ? (quitArmed == i ? "X AGAIN TO QUIT TO TITLE" : "QUIT TO TITLE") :
                                         (quitArmed == i ? "X AGAIN TO QUIT THE GAME" : "QUIT GAME");
@@ -2517,7 +2525,7 @@ static void drawMenu() {
       drawVectorText(label, x0 + 36 + vectorTextWidth(label, TS) / 2, y, TS, c, true);
       if (i != MI_MUSIC_VOL && i != MI_SFX_VOL) {
         bool on = i == MI_MUSIC ? musicOn.load() : i == MI_CLASSIC ? classic : i == MI_RANDOM ? randomField
-                : i == MI_BONUS ? bonusObjectives : showFlag;
+                : i == MI_BONUS ? bonusObjectives : i == MI_HELIS ? helisOn : showFlag;
         const char *v = on ? "ON" : "OFF";
         drawVectorText(v, x1 - 40 - vectorTextWidth(v, TS) / 2, y, TS, on ? rgb565(110, 230, 120) : rgb565(240, 90, 60), true);
       } else {   // a bar of 20 steps and the number
