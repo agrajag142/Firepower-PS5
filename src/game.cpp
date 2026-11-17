@@ -112,7 +112,7 @@
 #include <sys/stat.h>
 
 // ============================================================ settings
-static const char *VERSION = "V043";
+static const char *VERSION = "V044";
 static const int S = 2;                    // screen pixels per Amiga pixel
 static const int TILE = 64;                // a map square, in Amiga pixels
 static const int MAPN = 64;                // squares across and down
@@ -731,6 +731,39 @@ static void objectiveDestroyed(int ob, float x, float y) {
 }
 
 static void resetJets();   // (the jets, below)
+// ---- BASE DAMAGE (CLASSIC off, for now): how much of your base is gone. Your base: what can be
+// damaged of yours (buildings, walls, posts; not your garage) within BASE_RADIUS squares of your
+// garage, as it was at the start. Each piece counts the same: one destroyed (or worn into its next
+// state) is all lost, one hit is lost by the share of its hits it's taken.
+static const int BASE_RADIUS = 6;
+static int baseSq[256], baseType[256], baseLife[256], nBase = 0, baseLifeTotal = 0;
+static void recordBase() {
+  nBase = baseLifeTotal = 0;
+  int gx = startSquare / MAPN, gy = startSquare % MAPN;
+  for (int tx = gx - BASE_RADIUS; tx <= gx + BASE_RADIUS; tx++)
+    for (int ty = gy - BASE_RADIUS; ty <= gy + BASE_RADIUS; ty++) {
+      if (tx < 0 || ty < 0 || tx >= MAPN || ty >= MAPN || nBase >= 256) continue;
+      int i = sq(tx, ty);
+      const TileType &t = A.types[field[i]];
+      if (t.enemy || !(t.block & 0x78) || (t.flagsA & 0x08) || strength[i] <= 0) continue;
+      baseSq[nBase] = i;
+      baseType[nBase] = field[i];
+      baseLife[nBase] = strength[i];
+      baseLifeTotal += strength[i];
+      nBase++;
+    }
+}
+static int baseDamagePercent() {   // (each piece counts the same: a wall as much as a building)
+  if (nBase <= 0) return 0;
+  float lost = 0;
+  for (int k = 0; k < nBase; k++) {
+    int i = baseSq[k];
+    if (field[i] != baseType[k]) lost += 1;
+    else if (strength[i] < baseLife[k]) lost += 1 - (strength[i] > 0 ? strength[i] : 0) / (float)baseLife[k];
+  }
+  return (int)(lost * 100 / nBase + 0.5f);
+}
+
 static void startBattle(int m) {
   mapNo = m;
   memcpy(field, A.maps[m], sizeof(field));
@@ -780,6 +813,7 @@ static void startBattle(int m) {
     const TileType &t = A.types[field[i]];
     if ((t.block & 0x78) && !t.destructible && t.becomes != field[i] && t.becomes < 93) strength[i] = WALL_STRENGTH;
   }
+  recordBase();
   for (Missile &mm : missiles) mm.live = false;
   for (Heli &h : helis) h.live = false;
   heliTimer = HELI_FIRST;
@@ -1910,6 +1944,16 @@ static void drawHud() {
   drawVectorText(goal, PLAY_CX + 60, 15, 1.4f, flagState == FLAG_CARRIED ? rgb565(255, 230, 90) : rgb565(230, 230, 230), false);
   drawVectorText(VERSION, 30, 708, 1.1f, dim, false);
   drawObjectives();
+  if (!classic && nBase > 0) {   // BASE DAMAGE (for now), under the panel's radar side: top right of the battle view
+    char b[32];
+    int d = baseDamagePercent();
+    snprintf(b, sizeof(b), "BASE DAMAGE %d%%", d);
+    uint16_t c = d < 25 ? rgb565(200, 230, 200) : d < 50 ? rgb565(255, 220, 90) : rgb565(255, 90, 60);
+    float w = vectorTextWidth(b, 1.4f);
+    float x = PLAY_W / UNIT_K - 14 - w / 2;
+    pxBlend((int)((x - w / 2 - 8) * UNIT_K), (int)(44 * UNIT_K), (int)((x + w / 2 + 8) * UNIT_K), (int)(68 * UNIT_K), 0, 0, 0, 0.45f);
+    drawVectorText(b, x, 56, 1.4f, c, false);
+  }
   if (incompleteT > 0) {
     incompleteT -= 1 / 60.0f;
     drawVectorText("OBJECTIVES INCOMPLETE", PLAY_CX, 290, 2.6f, rgb565(255, 90, 60), true);
@@ -2814,7 +2858,7 @@ void gameFrame(float dt, uint32_t held, uint32_t pressed, float sx, float sy) {
     L = strlen(debugText);
     int nb = 0;
     for (const Bomb &b : bombs) nb += b.live;
-    snprintf(debugText + L, sizeof(debugText) - L, " jet %d %.0f,%.0f in %.0f bombs %d", (int)jet.live, jet.x, jet.y, jetTimer, nb);
+    snprintf(debugText + L, sizeof(debugText) - L, " base %d%% of %d (%d squares) jet %d %.0f,%.0f in %.0f bombs %d", baseDamagePercent(), baseLifeTotal, nBase, (int)jet.live, jet.x, jet.y, jetTimer, nb);
   }
 }
 

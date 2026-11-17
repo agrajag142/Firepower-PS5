@@ -10,6 +10,15 @@ Enhanced from the start: the whole 1920 x 1080 picture, the original's pixels at
 2x, so about 2.7 times as much of the battlefield is in view as on the Amiga's
 352 x 232 screen.
 
+## Version 044
+
+- BASE DAMAGE (CLASSIC off, for now), top right of the battle view: how much of
+  your base is gone. Your base is what of yours can be damaged (buildings,
+  walls, posts - not your garage) within 6 squares of your garage, as it was
+  at the start; each piece counts the same, one destroyed as all lost, one
+  hit by the share of its hits it's taken. White under 25%, yellow to 50%,
+  red over
+
 ## Version 043: the missile silo
 
 - The bonus objective DESTROY THE MISSILE LAUNCHER is now DESTROY THE MISSILE
